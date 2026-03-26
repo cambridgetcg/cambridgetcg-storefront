@@ -31,7 +31,14 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
             {card.stock > 0 ? `${card.stock} in stock · Near Mint · Japanese` : "Out of stock"}
           </div>
           {card.stock > 0 ? (
-            <AddToCart card={{ sku: card.sku, price: card.price_gbp }} />
+            <AddToCart card={{
+              sku: card.sku,
+              name: card.name_en || card.name || card.card_number,
+              price: card.price_gbp,
+              image_url: card.image_url,
+              set_code: card.set_code,
+              card_number: card.card_number,
+            }} />
           ) : (
             <button disabled className="opacity-50 cursor-not-allowed px-8 py-4 rounded-xl bg-neutral-800">Out of Stock</button>
           )}
