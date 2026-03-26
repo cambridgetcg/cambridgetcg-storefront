@@ -1,5 +1,5 @@
 import { fetchCard, fetchPrices } from "@/lib/wholesale/client";
-import { formatPrice } from "@/lib/format";
+import { formatRetailPrice, retailPrice } from "@/lib/pricing";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -88,7 +88,7 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
             <p className="text-neutral-400 mt-1">{card.card_number}</p>
           </div>
 
-          <div className="text-4xl font-bold text-emerald-400">{formatPrice(card.price_gbp)}</div>
+          <div className="text-4xl font-bold text-emerald-400">{formatRetailPrice(card.price_gbp)}</div>
 
           {/* Stock indicator */}
           <div className="text-sm">
@@ -109,7 +109,7 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
               card={{
                 sku: card.sku,
                 name: card.name_en || card.name || card.card_number,
-                price: card.price_gbp,
+                price: retailPrice(card.price_gbp),
                 image_url: card.image_url,
                 set_code: card.set_code,
                 card_number: card.card_number,

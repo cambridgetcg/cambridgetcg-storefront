@@ -1,3 +1,4 @@
+import { formatRetailPrice } from "@/lib/pricing";
 import Link from "next/link";
 import Image from "next/image";
 import type { PriceItem } from "@/lib/wholesale/client";
@@ -18,7 +19,7 @@ export default function FeaturedCards({ cards }: { cards: PriceItem[] }) {
             </div>
             <div className="p-2">
               <p className="text-xs text-neutral-400 truncate">{card.card_number}</p>
-              <p className="text-sm font-bold text-emerald-400">£{card.price_gbp.toFixed(2)}</p>
+              <p className="text-sm font-bold text-emerald-400">{formatRetailPrice(card.price_gbp)}</p>
             </div>
           </Link>
         ))}
