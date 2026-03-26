@@ -6,6 +6,7 @@ export default function Nav() {
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="text-xl font-black text-white">Cambridge <span className="text-emerald-400">TCG</span></Link>
         <div className="flex items-center gap-6">
+          <Link href="/catalog?game=onepiece" className="text-sm text-neutral-300 hover:text-white transition">One Piece</Link>
           <Link href="/catalog" className="text-sm text-neutral-300 hover:text-white transition">Catalog</Link>
           <Link href="/trade-in" className="text-sm text-neutral-300 hover:text-white transition">Trade In</Link>
           <Link href="/about" className="text-sm text-neutral-300 hover:text-white transition">About</Link>
