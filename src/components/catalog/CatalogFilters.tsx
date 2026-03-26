@@ -13,10 +13,17 @@ interface CatalogFiltersProps {
     in_stock?: string;
   };
   rarities?: string[];
+  effectiveInStock?: boolean;
+  hasSet?: boolean;
 }
 
-export default function CatalogFilters({ games, current, rarities }: CatalogFiltersProps) {
-  // Build base params (preserving set, q, etc. when switching sort/filter)
+export default function CatalogFilters({
+  games,
+  current,
+  rarities,
+  effectiveInStock,
+  hasSet,
+}: CatalogFiltersProps) {
   function buildHref(overrides: Record<string, string | undefined>) {
     const params = new URLSearchParams();
     const merged = { ...current, ...overrides };
@@ -25,6 +32,12 @@ export default function CatalogFilters({ games, current, rarities }: CatalogFilt
     }
     return `/catalog?${params.toString()}`;
   }
+
+  // Toggle in_stock: if currently filtering in-stock, switch to show all (in_stock=false);
+  // if currently showing all, switch to in-stock (in_stock=true)
+  const toggleInStockHref = effectiveInStock
+    ? buildHref({ in_stock: "false" })
+    : buildHref({ in_stock: "true" });
 
   return (
     <div className="flex flex-col gap-4">
@@ -82,39 +95,18 @@ export default function CatalogFilters({ games, current, rarities }: CatalogFilt
             );
           })}
 
-          {/* In-stock toggle */}
+          {/* In-stock / All cards toggle */}
           <span className="text-xs text-neutral-500 ml-2">|</span>
           <Link
-            href={buildHref({
-              in_stock: current.in_stock === "true" ? undefined : "true",
-            })}
+            href={toggleInStockHref}
             className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-              current.in_stock === "true"
+              effectiveInStock
                 ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40"
                 : "bg-neutral-800 text-neutral-400 hover:text-white"
             }`}
           >
-            In Stock Only
+            {effectiveInStock ? "In Stock" : "All Cards"}
           </Link>
-
-          {/* Rarity filter */}
-          {rarities && rarities.length > 0 && (
-            <>
-              <span className="text-xs text-neutral-500 ml-2">|</span>
-              <span className="text-xs text-neutral-500 uppercase tracking-wider">Rarity:</span>
-              {rarities.map((r) => (
-                <Link
-                  key={r}
-                  href={buildHref({
-                    rarity: current.sort ? current.sort : undefined,
-                  })}
-                  className="px-3 py-1 rounded-full text-xs font-medium bg-neutral-800 text-neutral-400 hover:text-white transition"
-                >
-                  {r}
-                </Link>
-              ))}
-            </>
-          )}
         </div>
       )}
     </div>
