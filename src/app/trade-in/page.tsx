@@ -27,8 +27,8 @@ export interface BuylistItem {
 
 export default async function TradeInPage() {
   const [creditRes, cashRes] = await Promise.all([
-    fetchPrices({ game: "one-piece", channel: "tradein-credit", limit: 500 }),
-    fetchPrices({ game: "one-piece", channel: "tradein-cash", limit: 500 }),
+    fetchPrices({ game: "one-piece", channel: "tradein-credit", limit: 2000 }),
+    fetchPrices({ game: "one-piece", channel: "tradein-cash", limit: 2000 }),
   ]);
 
   // Build lookup of cash prices by SKU
@@ -69,7 +69,14 @@ export default async function TradeInPage() {
         credit_want: creditWant,
       };
     })
-    .filter((item) => item.credit_price > 0 || item.cash_price > 0);
+    .filter((item) => item.credit_price > 0 || item.cash_price > 0)
+    .filter((item) => {
+      // Exclude standard C / UC / R — we only want parallels, alt arts, and premium rarities
+      // Keep anything with /P, /SP, SR, SEC, SP, L, or parallel markers
+      const r = (item.rarity ?? "").toUpperCase().trim();
+      const EXCLUDED = new Set(["C", "R", "UC", "-", ""]);
+      return !EXCLUDED.has(r);
+    });
 
   // Stats for hero
   const cardsWanted = buylist.filter((i) => i.credit_price > 0).length;
