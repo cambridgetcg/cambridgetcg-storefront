@@ -114,7 +114,7 @@ export default async function CatalogPage({
             ].map((set) => (
               <Link
                 key={set.code}
-                href={`/catalog?game=onepiece&set=${set.code}`}
+                href={`/catalog?game=one-piece&set=${set.code}`}
                 className="px-5 py-3 bg-neutral-900 hover:bg-neutral-800 rounded-xl text-white font-medium transition-all duration-200 hover:ring-2 ring-emerald-500"
               >
                 <span className="font-mono text-emerald-400 text-xs mr-2">{set.code}</span>
@@ -126,7 +126,7 @@ export default async function CatalogPage({
           {/* Browse all sets prompt */}
           <div className="text-center">
             <Link
-              href="/catalog?game=onepiece"
+              href="/catalog?game=one-piece"
               className="inline-flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl transition"
             >
               Browse All Sets

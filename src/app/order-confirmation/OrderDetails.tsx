@@ -14,7 +14,7 @@ export default function OrderDetails() {
   return (
     <div className="text-center mt-8">
       <Link
-        href="/catalog?game=onepiece"
+        href="/catalog?game=one-piece"
         className="inline-block px-6 py-3 bg-emerald-500 text-black font-bold rounded-lg hover:bg-emerald-400 transition"
       >
         Continue Shopping

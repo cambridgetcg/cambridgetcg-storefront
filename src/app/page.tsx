@@ -14,7 +14,7 @@ export default async function Home() {
       channel: "",
       items: [],
     })),
-    fetchSets("onepiece").catch(() => []),
+    fetchSets("one-piece").catch(() => []),
   ]);
 
   // Take latest 8 sets (sorted by release_date desc, then code desc)
@@ -29,7 +29,7 @@ export default async function Home() {
   // Fetch one card thumbnail per set in parallel
   const setsWithThumbs = await Promise.all(
     latestSets.map(async (set) => {
-      const res = await fetchPrices({ game: "onepiece", set: set.code, limit: 1 }).catch(
+      const res = await fetchPrices({ game: "one-piece", set: set.code, limit: 1 }).catch(
         () => ({ count: 0, total: 0, channel: "", items: [] })
       );
       return { ...set, thumb: res.items[0] ?? null };
@@ -40,7 +40,7 @@ export default async function Home() {
     <main>
       <HeroSlideshow />
       <GameGrid games={allGames} />
-      <SetGrid sets={setsWithThumbs} gameSlug="onepiece" />
+      <SetGrid sets={setsWithThumbs} gameSlug="one-piece" />
       <StorySection />
       <FeaturedCards cards={featured.items} />
     </main>

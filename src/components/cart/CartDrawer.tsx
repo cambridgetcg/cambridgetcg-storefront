@@ -55,7 +55,7 @@ export default function CartDrawer() {
               </svg>
               <p className="text-neutral-400">Your cart is empty</p>
               <Link
-                href="/catalog?game=onepiece"
+                href="/catalog?game=one-piece"
                 onClick={closeDrawer}
                 className="px-6 py-3 bg-emerald-500 text-black font-bold rounded-lg hover:bg-emerald-400 transition"
               >

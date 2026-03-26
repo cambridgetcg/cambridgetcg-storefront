@@ -36,7 +36,7 @@ export default function CheckoutPage() {
         <h1 className="text-2xl font-bold mb-4">Your cart is empty</h1>
         <p className="text-neutral-400 mb-6">Add some cards before checking out.</p>
         <Link
-          href="/catalog?game=onepiece"
+          href="/catalog?game=one-piece"
           className="inline-block px-6 py-3 bg-emerald-500 text-black font-bold rounded-lg hover:bg-emerald-400 transition"
         >
           Browse Catalog

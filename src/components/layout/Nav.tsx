@@ -13,7 +13,7 @@ export default function Nav() {
           Cambridge <span className="text-emerald-400">TCG</span>
         </Link>
         <div className="flex items-center gap-6">
-          <Link href="/catalog?game=onepiece" className="text-sm text-neutral-300 hover:text-white transition">
+          <Link href="/catalog?game=one-piece" className="text-sm text-neutral-300 hover:text-white transition">
             One Piece
           </Link>
           <Link href="/catalog" className="text-sm text-neutral-300 hover:text-white transition">
