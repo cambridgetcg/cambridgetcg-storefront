@@ -158,7 +158,7 @@ CREATE TABLE tradein_register (
 **Goal:** Full customer email communication
 
 #### Setup
-- Verify `cambridgetcg.com` domain in AWS SES (eu-west-2)
+- Verify `cambridgetcg.com` domain in AWS SES (us-east-1)
 - Request production access (out of sandbox)
 - Create `tradein@cambridgetcg.com` sending identity
 - Add `AWS_SES_REGION`, `AWS_SES_FROM` to env
@@ -245,3 +245,26 @@ src/app/api/tradein/admin/
 3. **Return label** — include pre-paid or charge £2.50?
 4. **Volume expectation** — helps prioritise automation
 5. **SES production access** — request now before Phase 2 starts
+
+---
+
+## Decisions (confirmed 2026-03-26)
+
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | Store address | Cambridge TCG, PO Box 1637, CAMBRIDGE, CB1 0PD |
+| 2 | Condition policy | **NM only** — no LP. Substandard cards returned at customer expense. |
+| 3 | Shipping | Customer handles own. We pay **£2.70 shipping contribution** if total payout ≥ £100. |
+| 4 | Expected volume | **5,000–10,000 submissions/week** → automation mandatory from day 1 |
+| 5 | SES | Production access needed — apply before Phase 2 build starts |
+
+## ⚠️ Volume Implication — Architecture Revision
+
+5,000–10,000/week = ~700–1,400/day = ~1 per minute at peak.
+
+- Email: 700–1,400 confirmation emails/day → SES at ~£1.50/day
+- API: rate limiting mandatory (max 5/IP/hour, max 3/email/day)
+- Admin panel: critical for Phase 1, not Phase 3 — cannot manage this by email
+- Dedup: fingerprint by email + cart hash within 10 min window
+- Queue: async email with retry (SES is fast but add resilience)
+- DB pooling: PgBouncer or Drizzle pool config from day 1
