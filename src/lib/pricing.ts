@@ -1,30 +1,41 @@
 /**
  * Retail pricing for cambridgetcg.com
  *
- * Wholesale price (from wholesaletcgdirect.com) is the landed cost + 8% margin + VAT.
- * Retail adds a 15% multiplier on top for the consumer-facing storefront.
+ * Prices come from the wholesale API with ?channel=cambridgetcg.
+ * The API returns channel_price (server-computed with DB-configured multiplier).
  *
- * Formula: retail = round(wholesale × 1.15, 2)
+ * JS fallback: wholesale × 1.15 rounded up to £0.10 — used only if channel_price
+ * is missing (backwards compat with API responses before channel pricing was deployed).
  */
 
-export const RETAIL_MULTIPLIER = 1.15;
+const FALLBACK_MULTIPLIER = 1.15;
+const FALLBACK_ROUND_TO = 0.10;
 
 /**
- * Convert wholesale price_gbp to retail price.
- * All prices on cambridgetcg.com should use this.
+ * Get the retail price for a card.
+ * Prefers channel_price from API; falls back to JS calculation.
  */
-export function retailPrice(wholesaleGbp: number): number {
-  // Multiply by 1.15 then round UP to nearest £0.10
-  return Math.ceil(wholesaleGbp * RETAIL_MULTIPLIER * 10) / 10;
+export function retailPrice(wholesaleGbp: number, channelPrice?: number): number {
+  if (channelPrice != null && channelPrice > 0) return channelPrice;
+  return Math.ceil(wholesaleGbp * FALLBACK_MULTIPLIER / FALLBACK_ROUND_TO) * FALLBACK_ROUND_TO;
 }
 
 /**
  * Format a retail price as a £ string.
- * Examples: 0.57 → "£0.66", 1234.5 → "£1,419.68"
  */
-export function formatRetailPrice(wholesaleGbp: number): string {
-  const retail = retailPrice(wholesaleGbp);
-  return "£" + retail.toLocaleString("en-GB", {
+export function formatRetailPrice(wholesaleGbp: number, channelPrice?: number): string {
+  const price = retailPrice(wholesaleGbp, channelPrice);
+  return "£" + price.toLocaleString("en-GB", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * Format any GBP price.
+ */
+export function formatPrice(price: number): string {
+  return "£" + price.toLocaleString("en-GB", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });

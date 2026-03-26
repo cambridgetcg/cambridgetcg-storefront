@@ -5,6 +5,7 @@ export interface PriceItem {
   sku: string;
   card_number: string;
   price_gbp: number;
+  channel_price?: number;
   stock: number;
   pending_stock: number;
   image_url: string | null;
@@ -49,8 +50,11 @@ export async function fetchPrices(params?: {
   limit?: number;
   offset?: number;
   category?: string;
+  channel?: string;
 }): Promise<PricesResponse> {
   const url = new URL(WHOLESALE_URL + '/api/v1/prices');
+  // Always request cambridgetcg channel pricing unless overridden
+  url.searchParams.set('channel', params?.channel ?? 'cambridgetcg');
   if (params?.game) url.searchParams.set('game', params.game);
   if (params?.set) url.searchParams.set('set', params.set);
   if (params?.q) url.searchParams.set('q', params.q);
@@ -72,8 +76,8 @@ export async function fetchPrices(params?: {
   return res.json();
 }
 
-export async function fetchCard(sku: string): Promise<PriceItem | null> {
-  const res = await fetch(WHOLESALE_URL + '/api/v1/prices/' + encodeURIComponent(sku), {
+export async function fetchCard(sku: string, channel = 'cambridgetcg'): Promise<PriceItem | null> {
+  const res = await fetch(WHOLESALE_URL + '/api/v1/prices/' + encodeURIComponent(sku) + '?channel=' + channel, {
     headers: { Authorization: 'Bearer ' + WHOLESALE_KEY },
     next: { revalidate: 300 },
   });

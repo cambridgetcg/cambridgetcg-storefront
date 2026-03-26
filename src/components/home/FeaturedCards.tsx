@@ -19,7 +19,7 @@ export default function FeaturedCards({ cards }: { cards: PriceItem[] }) {
             </div>
             <div className="p-2">
               <p className="text-xs text-neutral-400 truncate">{card.card_number}</p>
-              <p className="text-sm font-bold text-emerald-400">{formatRetailPrice(card.price_gbp)}</p>
+              <p className="text-sm font-bold text-emerald-400">{formatRetailPrice(card.price_gbp, card.channel_price)}</p>
             </div>
           </Link>
         ))}

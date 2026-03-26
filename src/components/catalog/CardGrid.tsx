@@ -74,7 +74,7 @@ export default function CardGrid({ cards }: { cards: PriceItem[] }) {
                 card={{
                   sku: card.sku,
                   name: card.name_en || card.name || card.card_number,
-                  price: retailPrice(card.price_gbp),
+                  price: retailPrice(card.price_gbp, card.channel_price),
                   image_url: card.image_url,
                   set_code: card.set_code,
                   card_number: card.card_number,
@@ -89,7 +89,7 @@ export default function CardGrid({ cards }: { cards: PriceItem[] }) {
               {card.name_en || card.name || card.card_number}
             </p>
             <p className="text-[10px] text-neutral-500 truncate">{card.card_number}</p>
-            <p className="text-sm font-bold text-emerald-400 mt-0.5">{formatRetailPrice(card.price_gbp)}</p>
+            <p className="text-sm font-bold text-emerald-400 mt-0.5">{formatRetailPrice(card.price_gbp, card.channel_price)}</p>
           </div>
         </Link>
       ))}
