@@ -14,7 +14,8 @@ export const RETAIL_MULTIPLIER = 1.15;
  * All prices on cambridgetcg.com should use this.
  */
 export function retailPrice(wholesaleGbp: number): number {
-  return Math.round(wholesaleGbp * RETAIL_MULTIPLIER * 100) / 100;
+  // Multiply by 1.15 then round UP to nearest £0.10
+  return Math.ceil(wholesaleGbp * RETAIL_MULTIPLIER * 10) / 10;
 }
 
 /**
