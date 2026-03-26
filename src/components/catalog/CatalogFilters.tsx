@@ -100,12 +100,12 @@ export default function CatalogFilters({
           <Link
             href={toggleInStockHref}
             className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-              effectiveInStock
+              !effectiveInStock
                 ? "bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/40"
                 : "bg-neutral-800 text-neutral-400 hover:text-white"
             }`}
           >
-            {effectiveInStock ? "In Stock" : "All Cards"}
+            {effectiveInStock ? "Show All Cards" : "In Stock Only"}
           </Link>
         </div>
       )}

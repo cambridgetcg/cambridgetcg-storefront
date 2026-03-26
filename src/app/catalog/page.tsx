@@ -26,20 +26,16 @@ export default async function CatalogPage({
   const PER_PAGE = 48;
 
   // In-stock default logic:
-  // - Game selected without a specific set: default to in_stock=true (unless explicitly set to "false")
-  // - Specific set selected: show all cards (full set view)
-  // - No game selected: no filter
+  // - Default: always show in-stock cards unless explicitly toggled off
+  // - "false" param = show all cards (user manually clicked "Show All")
   const hasGame = !!params.game;
   const hasSet = !!params.set;
   let effectiveInStock: boolean | undefined;
 
-  if (params.in_stock === "true") {
-    effectiveInStock = true;
-  } else if (params.in_stock === "false") {
-    effectiveInStock = undefined;
-  } else if (hasGame && !hasSet) {
-    // Default: in-stock only when browsing a game without a set
-    effectiveInStock = true;
+  if (params.in_stock === "false") {
+    effectiveInStock = undefined; // show all
+  } else {
+    effectiveInStock = true; // default: in-stock only
   }
 
   // Fetch data in parallel
