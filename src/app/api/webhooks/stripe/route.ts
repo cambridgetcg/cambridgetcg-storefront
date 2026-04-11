@@ -100,6 +100,26 @@ export async function POST(request: Request) {
     } catch (err) {
       console.error("[webhook] Error processing order:", err);
     }
+
+    // Handle auction payments
+    if (session.metadata?.type === "auction_payment" && session.metadata?.auction_id) {
+      try {
+        const auctionId = session.metadata.auction_id;
+        await query(
+          `UPDATE auctions SET status = 'paid', stripe_session_id = $2,
+           stripe_payment_intent = $3, paid_at = NOW(), updated_at = NOW()
+           WHERE id = $1 AND status = 'ended'`,
+          [
+            auctionId,
+            session.id,
+            typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || null,
+          ]
+        );
+        console.log(`[webhook] Auction ${auctionId} marked as paid`);
+      } catch (err) {
+        console.error("[webhook] Error processing auction payment:", err);
+      }
+    }
   }
 
   return NextResponse.json({ received: true });
