@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { reportSale } from "@/lib/wholesale/client";
 import { query } from "@/lib/db";
+import { processOrderRewards } from "@/lib/membership/db";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!.trim(), {
   apiVersion: "2026-02-25.clover",
@@ -97,6 +98,16 @@ export async function POST(request: Request) {
       );
 
       console.log(`[webhook] Order ${session.id} recorded for ${email}`);
+
+      // Process membership rewards (points + cashback)
+      if (userId && total > 0) {
+        try {
+          const rewards = await processOrderRewards(userId, total, session.id);
+          console.log(`[webhook] Rewards: ${rewards.pointsEarned} points, £${rewards.cashbackAmount} cashback for ${email}`);
+        } catch (rewardErr) {
+          console.error("[webhook] Rewards processing failed (order still recorded):", rewardErr);
+        }
+      }
     } catch (err) {
       console.error("[webhook] Error processing order:", err);
     }
