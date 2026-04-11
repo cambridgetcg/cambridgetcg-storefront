@@ -128,6 +128,24 @@ export default async function TradeInPage() {
         </div>
       </section>
 
+      {/* Custom quote banner */}
+      <section className="max-w-7xl mx-auto px-4 pt-8">
+        <div className="bg-gradient-to-r from-amber-500/10 to-emerald-500/10 border border-amber-500/20 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-white font-bold">Have cards not on the buylist?</h2>
+            <p className="text-neutral-400 text-sm mt-1">
+              Send us photos of any cards — graded, alt arts, other games, bulk collections. We&apos;ll send you a custom offer.
+            </p>
+          </div>
+          <Link
+            href="/trade-in/custom-quote"
+            className="shrink-0 px-5 py-2.5 bg-amber-500 text-black text-sm font-bold rounded-lg hover:bg-amber-400 transition"
+          >
+            Request Quote
+          </Link>
+        </div>
+      </section>
+
       {/* Buylist */}
       <section className="max-w-7xl mx-auto px-4 py-8">
         <BuylistTable buylist={buylist} />
