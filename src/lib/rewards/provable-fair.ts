@@ -239,6 +239,16 @@ export async function getDrawProof(raffleId: string): Promise<DrawProof | null> 
   if (result.rows.length === 0) return null;
 
   const row = result.rows[0];
+
+  // Populate winner from raffle data
+  const raffleResult = await query(
+    `SELECT r.winner_user_id, e.entry_count FROM raffles r
+     LEFT JOIN raffle_entries e ON e.raffle_id=r.id AND e.user_id=r.winner_user_id
+     WHERE r.id=$1`,
+    [raffleId]
+  );
+  const winnerData = raffleResult.rows[0];
+
   return {
     raffle_id: row.raffle_id,
     seed_commitment: row.seed_commitment,
@@ -248,7 +258,10 @@ export async function getDrawProof(raffleId: string): Promise<DrawProof | null> 
     winner_index: row.winner_index,
     total_weighted_entries: row.total_weighted_entries,
     entries: row.entry_list || [],
-    winner: null, // Populate from raffle data
+    winner: winnerData?.winner_user_id ? {
+      user_id: winnerData.winner_user_id,
+      entry_count: winnerData.entry_count || 0,
+    } : null,
     blockchain_tx_hash: row.blockchain_tx_hash,
     blockchain_network: row.blockchain_network,
   };
