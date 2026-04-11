@@ -302,7 +302,6 @@ export default function MembershipPage() {
                 "12% off all purchases",
                 "8% cashback",
                 "3x points",
-                "15% trade-in bonus",
                 "Priority everything",
               ].map(perk => (
                 <div key={perk} className="flex items-center gap-2 text-sm text-neutral-300">
@@ -379,12 +378,6 @@ export default function MembershipPage() {
             value={`${profile.perks.points_multiplier}x`}
             description="points multiplier"
             highlight={profile.perks.points_multiplier > 1}
-          />
-          <PerkCard
-            label="Trade-in"
-            value={`${profile.perks.tradein_bonus_percent}%`}
-            description="trade-in bonus"
-            highlight={profile.perks.tradein_bonus_percent > 0}
           />
           <PerkCard
             label="P2P Commission"
@@ -564,7 +557,6 @@ export default function MembershipPage() {
                   <div className="space-y-2 mb-4">
                     <TierStat label="Cashback" value={`${parseFloat(t.cashback_percent)}%`} />
                     <TierStat label="Points" value={`${parseFloat(t.points_multiplier)}x`} />
-                    <TierStat label="Trade-in bonus" value={`${parseFloat(t.tradein_bonus_percent)}%`} />
                     <TierStat
                       label="P2P commission"
                       value={`${(parseFloat(t.p2p_commission_rate) * 100).toFixed(0)}%`}
