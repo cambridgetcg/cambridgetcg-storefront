@@ -272,7 +272,16 @@ export default function CardMarketPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to place order");
+      if (!res.ok) {
+        if (res.status === 403 && data.code === "VERIFICATION_REQUIRED") {
+          setResult({
+            success: false,
+            message: "__VERIFICATION_REQUIRED__",
+          });
+          return;
+        }
+        throw new Error(data.error || "Failed to place order");
+      }
       const matchMsg = data.matched
         ? ` Matched ${data.trades?.length || 0} trade(s) immediately!`
         : "";
@@ -513,7 +522,16 @@ export default function CardMarketPage() {
                         : "bg-red-500/15 text-red-400 border border-red-500/30"
                     }`}
                   >
-                    {result.message}
+                    {result.message === "__VERIFICATION_REQUIRED__" ? (
+                      <span>
+                        UK verification required to trade.{" "}
+                        <Link href="/account/verify" className="underline font-medium hover:text-amber-400">
+                          Verify your identity
+                        </Link>
+                      </span>
+                    ) : (
+                      result.message
+                    )}
                   </div>
                 )}
               </form>
