@@ -1,5 +1,7 @@
 import { fetchCard, fetchPrices } from "@/lib/wholesale/client";
 import { formatRetailPrice, retailPrice } from "@/lib/pricing";
+import { getUnifiedMarketView } from "@/lib/market/unified";
+import { formatPrice } from "@/lib/format";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -31,6 +33,9 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
     ? await fetchPrices({ set: card.set_code, limit: 7, in_stock: true }).catch(() => ({ items: [] }))
     : { items: [] };
   const relatedCards = related.items.filter((c) => c.sku !== card.sku).slice(0, 6);
+
+  // Fetch P2P market data for this card
+  const market = await getUnifiedMarketView(sku).catch(() => null);
 
   const rarityClasses = rarityBadgeClasses(card.rarity);
 
@@ -126,6 +131,118 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
               <NotifyMe />
             </div>
           )}
+
+          {/* P2P Market Context */}
+          {(() => {
+            if (!market) return null;
+
+            // Filter to only P2P asks (exclude house/CTCG asks)
+            const p2pAsks = market.asks.filter((a) => !a.is_house);
+            const hasBids = market.bids.length > 0;
+            const hasP2pAsks = p2pAsks.length > 0;
+            const recentTrades24h = market.recent_trades.filter((t) => {
+              const tradeTime = new Date(t.created_at).getTime();
+              return Date.now() - tradeTime < 24 * 60 * 60 * 1000;
+            });
+            const hasRecentTrades = recentTrades24h.length > 0;
+            const hasActivity = hasBids || hasP2pAsks || hasRecentTrades;
+
+            if (!hasActivity) {
+              return (
+                <Link
+                  href={`/market/${sku}`}
+                  className="text-sm text-neutral-500 hover:text-white transition"
+                >
+                  Trade this card P2P &rarr;
+                </Link>
+              );
+            }
+
+            const bestP2pAsk = hasP2pAsks ? parseFloat(p2pAsks[0].price) : null;
+            const spotPrice = market.spot_price;
+            const p2pBelowStore =
+              bestP2pAsk !== null && spotPrice !== null && bestP2pAsk < spotPrice;
+            const p2pDiscountPct =
+              p2pBelowStore && spotPrice
+                ? Math.round(((spotPrice - bestP2pAsk!) / spotPrice) * 100)
+                : null;
+
+            return (
+              <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 flex flex-col gap-3">
+                <h3 className="text-sm font-semibold text-neutral-300 uppercase tracking-wider">Market</h3>
+
+                {/* P2P asks below store price */}
+                {hasP2pAsks && p2pBelowStore && (
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 mt-0.5 px-2 py-0.5 text-xs font-bold rounded-full bg-emerald-500/20 text-emerald-400">
+                      P2P Available
+                    </span>
+                    <div className="text-sm text-neutral-300">
+                      Also available from sellers:{" "}
+                      <span className="text-white font-medium">
+                        From {formatPrice(bestP2pAsk!)}
+                      </span>{" "}
+                      <span className="text-emerald-400">
+                        ({p2pDiscountPct}% below our price)
+                      </span>
+                      {" "}&nbsp;
+                      <Link
+                        href={`/market/${sku}`}
+                        className="text-emerald-400 hover:text-emerald-300 font-medium transition"
+                      >
+                        View on Market
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
+                {/* P2P asks at or above store price (still worth mentioning) */}
+                {hasP2pAsks && !p2pBelowStore && (
+                  <div className="text-sm text-neutral-400">
+                    Also available from sellers from{" "}
+                    <span className="text-white font-medium">{formatPrice(bestP2pAsk!)}</span>
+                    {" "}&nbsp;
+                    <Link
+                      href={`/market/${sku}`}
+                      className="text-emerald-400 hover:text-emerald-300 font-medium transition"
+                    >
+                      View on Market
+                    </Link>
+                  </div>
+                )}
+
+                {/* Highest bid (demand signal) */}
+                {hasBids && (
+                  <div className="text-sm text-neutral-400">
+                    Highest buy offer:{" "}
+                    <span className="text-white font-medium">{formatPrice(market.best_bid!)}</span>
+                    {" "}&nbsp;
+                    <Link
+                      href={`/market/${sku}`}
+                      className="text-amber-400 hover:text-amber-300 font-medium transition"
+                    >
+                      Sell yours
+                    </Link>
+                  </div>
+                )}
+
+                {/* Recent trade count */}
+                {hasRecentTrades && (
+                  <p className="text-sm text-neutral-500">
+                    {recentTrades24h.length} P2P trade{recentTrades24h.length !== 1 ? "s" : ""} in the last 24h
+                  </p>
+                )}
+
+                {/* Always link to full order book */}
+                <Link
+                  href={`/market/${sku}`}
+                  className="text-sm text-neutral-500 hover:text-white transition"
+                >
+                  View full order book &rarr;
+                </Link>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/format";
-import type { CardOrderBook, OrderBookEntry, MarketTrade } from "@/lib/market/types";
+import type { OrderBookEntry, MarketTrade } from "@/lib/market/types";
+import type { UnifiedMarketView } from "@/lib/market/unified";
 
 const CONDITIONS = [
   "Near Mint",
@@ -14,33 +15,9 @@ const CONDITIONS = [
   "Damaged",
 ];
 
-function DepthBar({ quantity, maxQuantity, side }: { quantity: number; maxQuantity: number; side: "bid" | "ask" }) {
-  const pct = maxQuantity > 0 ? (quantity / maxQuantity) * 100 : 0;
-  const color = side === "bid" ? "bg-emerald-500/25" : "bg-red-500/25";
-  return (
-    <div className="relative h-8 flex items-center">
-      <div
-        className={`absolute inset-y-0 ${side === "bid" ? "right-0" : "left-0"} ${color} rounded`}
-        style={{ width: `${pct}%` }}
-      />
-      <span className="relative z-10 w-full flex justify-between px-2 text-xs font-mono">
-        {side === "bid" ? (
-          <>
-            <span className="text-neutral-400">{quantity}</span>
-            <span className="text-emerald-400 font-medium">{formatPrice(Number(quantity))}</span>
-          </>
-        ) : (
-          <>
-            <span className="text-red-400 font-medium">{formatPrice(Number(quantity))}</span>
-            <span className="text-neutral-400">{quantity}</span>
-          </>
-        )}
-      </span>
-    </div>
-  );
-}
+type UnifiedAsk = OrderBookEntry & { is_house?: boolean };
 
-function OrderBookViz({ bids, asks }: { bids: OrderBookEntry[]; asks: OrderBookEntry[] }) {
+function OrderBookViz({ bids, asks }: { bids: OrderBookEntry[]; asks: UnifiedAsk[] }) {
   const maxBidQty = Math.max(1, ...bids.map((b) => b.total_quantity));
   const maxAskQty = Math.max(1, ...asks.map((a) => a.total_quantity));
   const maxRows = Math.max(bids.length, asks.length, 1);
@@ -74,11 +51,18 @@ function BidAskRow({
   isFirst,
 }: {
   bid?: OrderBookEntry;
-  ask?: OrderBookEntry;
+  ask?: UnifiedAsk;
   maxBidQty: number;
   maxAskQty: number;
   isFirst: boolean;
 }) {
+  const isHouse = ask?.is_house;
+  const askBgColor = isHouse ? "bg-amber-500/10" : "bg-red-500/20";
+  const askTextColor = isHouse ? "text-amber-400" : "text-red-400";
+  const askBorderColor = isFirst
+    ? isHouse ? "border-l-2 border-amber-500/40" : "border-l-2 border-red-500/40"
+    : "border-l border-neutral-800";
+
   return (
     <>
       {/* Bid cell */}
@@ -99,15 +83,19 @@ function BidAskRow({
         )}
       </div>
       {/* Ask cell */}
-      <div className={`relative h-8 flex items-center ${isFirst ? "border-l-2 border-red-500/40" : "border-l border-neutral-800"}`}>
+      <div className={`relative h-8 flex items-center ${askBorderColor}`}>
         {ask ? (
           <>
             <div
-              className="absolute inset-y-0 left-0 bg-red-500/20 rounded-r"
+              className={`absolute inset-y-0 left-0 ${askBgColor} rounded-r`}
               style={{ width: `${(ask.total_quantity / maxAskQty) * 100}%` }}
             />
             <span className="relative z-10 w-full flex justify-between px-2 text-xs font-mono">
-              <span className="text-red-400 font-medium">{formatPrice(Number(ask.price))}</span>
+              <span className={`${askTextColor} font-medium flex items-center gap-1`}>
+                {isHouse && <span title="CTCG stock">&#127978;</span>}
+                {formatPrice(Number(ask.price))}
+                {isHouse && <span className="text-[10px] text-amber-500/80 font-sans font-semibold">CTCG</span>}
+              </span>
               <span className="text-neutral-400">{ask.total_quantity}</span>
             </span>
           </>
@@ -126,11 +114,106 @@ function formatTime(iso: string) {
     d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Spot price + market price info panel */
+function SpotPricePanel({ view }: { view: UnifiedMarketView }) {
+  const { spot_price, spot_stock, market_price, p2p_discount, tradein_credit, tradein_cash } = view;
+
+  return (
+    <div className="bg-neutral-900/60 border border-neutral-800 rounded-lg p-3 mb-4 space-y-2">
+      {/* CTCG Spot */}
+      {spot_price != null ? (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-neutral-400">CTCG Spot</span>
+          <span className="text-sm font-mono text-amber-400 font-bold">
+            {formatPrice(spot_price)}
+            <span className="text-xs text-neutral-500 font-normal ml-1.5">
+              ({spot_stock} in stock)
+            </span>
+          </span>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-neutral-400">CTCG Spot</span>
+          <span className="text-xs text-neutral-600">Not available</span>
+        </div>
+      )}
+
+      {/* Market Price */}
+      {market_price != null && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-neutral-400">Market Price</span>
+          <span className="text-sm font-mono text-white font-bold">
+            {formatPrice(market_price)}
+            {p2p_discount != null && p2p_discount > 0 && (
+              <span className="ml-1.5 text-[10px] font-sans font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                {p2p_discount}% below spot
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+
+      {/* Trade-in context for sellers */}
+      {(tradein_credit != null || tradein_cash != null) && (
+        <div className="border-t border-neutral-800 pt-2 mt-2 space-y-1">
+          <span className="text-[10px] text-neutral-500 uppercase tracking-wide">Trade-in reference</span>
+          {tradein_credit != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-neutral-500">Trade-in credit</span>
+              <span className="text-xs font-mono text-neutral-300">~{formatPrice(tradein_credit)}</span>
+            </div>
+          )}
+          {tradein_cash != null && (
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-neutral-500">Trade-in cash</span>
+              <span className="text-xs font-mono text-neutral-300">~{formatPrice(tradein_cash)}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Buy routing info — tells user where they're buying from */
+function BuyRoutingInfo({ view }: { view: UnifiedMarketView }) {
+  const { asks, spot_price } = view;
+  if (asks.length === 0) return null;
+
+  const bestAsk = asks[0];
+  const bestPrice = Number(bestAsk.price);
+  const isHouse = bestAsk.is_house;
+
+  if (isHouse) {
+    return (
+      <div className="text-xs px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300">
+        &#127978; Buy from CTCG at {formatPrice(bestPrice)} (guaranteed stock)
+      </div>
+    );
+  }
+
+  // P2P seller — show savings vs CTCG if spot exists
+  if (spot_price != null && bestPrice < spot_price) {
+    const savings = spot_price - bestPrice;
+    return (
+      <div className="text-xs px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+        Buy from seller at {formatPrice(bestPrice)} (save {formatPrice(savings)} vs CTCG spot)
+      </div>
+    );
+  }
+
+  return (
+    <div className="text-xs px-3 py-2 rounded-lg bg-neutral-800 border border-neutral-700 text-neutral-300">
+      Buy from seller at {formatPrice(bestPrice)}
+    </div>
+  );
+}
+
 export default function CardMarketPage() {
   const params = useParams();
   const sku = params.sku as string;
 
-  const [book, setBook] = useState<CardOrderBook | null>(null);
+  const [book, setBook] = useState<UnifiedMarketView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -147,9 +230,9 @@ export default function CardMarketPage() {
 
   const fetchBook = useCallback(async () => {
     try {
-      const res = await fetch(`/api/market/${sku}`);
+      const res = await fetch(`/api/market/${sku}/unified`);
       if (!res.ok) throw new Error("Not found");
-      const data: CardOrderBook = await res.json();
+      const data: UnifiedMarketView = await res.json();
       setBook(data);
       setError("");
     } catch {
@@ -253,7 +336,7 @@ export default function CardMarketPage() {
 
         {/* Main layout */}
         <div className="grid md:grid-cols-[240px_1fr_320px] gap-6">
-          {/* Left: Card image */}
+          {/* Left: Card image + spot info */}
           <div>
             {book.image_url ? (
               <img
@@ -268,6 +351,11 @@ export default function CardMarketPage() {
             )}
             <h1 className="text-lg font-bold text-white mt-4">{book.card_name || sku}</h1>
             <p className="text-xs text-neutral-500 font-mono">{sku}</p>
+
+            {/* Spot price panel below card image */}
+            <div className="mt-4">
+              <SpotPricePanel view={book} />
+            </div>
           </div>
 
           {/* Center: Order book */}
@@ -287,6 +375,11 @@ export default function CardMarketPage() {
               <span className="text-red-400">
                 Best Ask: {book.best_ask ? formatPrice(Number(book.best_ask)) : "—"}
               </span>
+            </div>
+
+            {/* Buy routing info */}
+            <div className="mb-4">
+              <BuyRoutingInfo view={book} />
             </div>
 
             {book.bids.length === 0 && book.asks.length === 0 ? (
@@ -328,6 +421,11 @@ export default function CardMarketPage() {
               {tab === "buy"
                 ? `Best ask: ${book.best_ask ? formatPrice(Number(book.best_ask)) : "—"}`
                 : `Best bid: ${book.best_bid ? formatPrice(Number(book.best_bid)) : "—"}`}
+              {tab === "buy" && book.spot_price != null && (
+                <span className="ml-2 text-amber-400/70">
+                  (CTCG Spot: {formatPrice(book.spot_price)})
+                </span>
+              )}
             </div>
 
             {loggedIn === false ? (
