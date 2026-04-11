@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { formatPrice } from "@/lib/format";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import { useToast } from "@/components/ui/Toast";
 
 interface AuctionSummary {
   id: string;
@@ -56,6 +58,9 @@ export default function AdminAuctionsPage() {
   const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
   const [approving, setApproving] = useState<string | null>(null);
   const [showPendingOnly, setShowPendingOnly] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const { toast } = useToast();
 
   const fetchAuctions = useCallback(async () => {
     setLoading(true);
@@ -126,22 +131,24 @@ export default function AdminAuctionsPage() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this draft auction?")) return;
-    try {
-      const res = await fetch(`/api/auctions/${id}`, { method: "DELETE" });
-      if (res.ok) {
-        setAuctions((prev) => prev.filter((a) => a.id !== id));
-        setExpanded(null);
+  function handleDelete(id: string) {
+    setPendingAction(() => async () => {
+      try {
+        const res = await fetch(`/api/auctions/${id}`, { method: "DELETE" });
+        if (res.ok) {
+          setAuctions((prev) => prev.filter((a) => a.id !== id));
+          setExpanded(null);
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
+    });
+    setConfirmOpen(true);
   }
 
   async function handleApproval(id: string, action: "approve" | "reject") {
     if (action === "reject" && !rejectNotes[id]?.trim()) {
-      alert("Please enter rejection notes before rejecting.");
+      toast("Please enter rejection notes.", "warning");
       return;
     }
     setApproving(id);
@@ -171,10 +178,10 @@ export default function AdminAuctionsPage() {
         setRejectNotes((prev) => ({ ...prev, [id]: "" }));
       } else {
         const err = await res.json().catch(() => null);
-        alert(err?.error || "Failed to update approval status.");
+        toast(err?.error || "Failed to update approval status.", "error");
       }
     } catch {
-      alert("Network error.");
+      toast("Network error.", "error");
     } finally {
       setApproving(null);
     }
@@ -448,6 +455,16 @@ export default function AdminAuctionsPage() {
             </div>
           ))}
         </div>
+
+        <ConfirmModal
+          open={confirmOpen}
+          title="Delete Auction"
+          message="Delete this draft auction?"
+          confirmLabel="Delete"
+          variant="danger"
+          onConfirm={() => { pendingAction?.(); setConfirmOpen(false); setPendingAction(null); }}
+          onCancel={() => { setConfirmOpen(false); setPendingAction(null); }}
+        />
       </div>
     </main>
   );

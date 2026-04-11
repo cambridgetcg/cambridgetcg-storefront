@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatPrice } from "@/lib/format";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import type { MarketOrder, MarketTrade, EscrowStatus } from "@/lib/market/types";
 
 const ESCROW_BADGES: Record<EscrowStatus, { label: string; color: string }> = {
@@ -44,6 +45,8 @@ export default function TradesPage() {
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [loadingTrades, setLoadingTrades] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   useEffect(() => {
     fetch("/api/market/orders?status=open")
@@ -59,21 +62,24 @@ export default function TradesPage() {
       .finally(() => setLoadingTrades(false));
   }, []);
 
-  async function handleCancel(orderId: string) {
-    setCancelling(orderId);
-    try {
-      const res = await fetch("/api/market/orders", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId }),
-      });
-      if (!res.ok) throw new Error("Failed to cancel");
-      setOrders((prev) => prev.filter((o) => o.id !== orderId));
-    } catch {
-      // Silently fail — user can retry
-    } finally {
-      setCancelling(null);
-    }
+  function handleCancel(orderId: string) {
+    setPendingAction(() => async () => {
+      setCancelling(orderId);
+      try {
+        const res = await fetch("/api/market/orders", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId }),
+        });
+        if (!res.ok) throw new Error("Failed to cancel");
+        setOrders((prev) => prev.filter((o) => o.id !== orderId));
+      } catch {
+        // Silently fail — user can retry
+      } finally {
+        setCancelling(null);
+      }
+    });
+    setConfirmOpen(true);
   }
 
   return (
@@ -253,6 +259,16 @@ export default function TradesPage() {
           )}
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmOpen}
+        title="Cancel Order"
+        message="Cancel this market order? This cannot be undone."
+        confirmLabel="Cancel Order"
+        variant="warning"
+        onConfirm={() => { pendingAction?.(); setConfirmOpen(false); setPendingAction(null); }}
+        onCancel={() => { setConfirmOpen(false); setPendingAction(null); }}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { formatPrice } from "@/lib/format";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 
 interface QuoteRequest {
   id: number;
@@ -79,6 +80,8 @@ export default function AdminQuotesPage() {
   const [itemPrices, setItemPrices] = useState<Record<string, ItemPriceState[]>>({});
   const [adminNotes, setAdminNotes] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const fetchQuotes = useCallback(async () => {
     setLoading(true);
@@ -222,35 +225,36 @@ export default function AdminQuotesPage() {
     }
   }
 
-  async function handleCancel(ref: string) {
-    if (!confirm("Cancel this quote request?")) return;
-
-    setSubmitting(ref);
-    try {
-      const res = await fetch(`/api/quotes/${ref}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "cancel" }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setQuotes((prev) =>
-          prev.map((q) =>
-            q.request.reference === ref ? { ...q, request: data.request } : q
-          )
-        );
-        if (detail[ref]) {
-          setDetail((prev) => ({
-            ...prev,
-            [ref]: { ...prev[ref], request: data.request },
-          }));
+  function handleCancel(ref: string) {
+    setPendingAction(() => async () => {
+      setSubmitting(ref);
+      try {
+        const res = await fetch(`/api/quotes/${ref}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "cancel" }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setQuotes((prev) =>
+            prev.map((q) =>
+              q.request.reference === ref ? { ...q, request: data.request } : q
+            )
+          );
+          if (detail[ref]) {
+            setDetail((prev) => ({
+              ...prev,
+              [ref]: { ...prev[ref], request: data.request },
+            }));
+          }
         }
+      } catch {
+        // ignore
+      } finally {
+        setSubmitting(null);
       }
-    } catch {
-      // ignore
-    } finally {
-      setSubmitting(null);
-    }
+    });
+    setConfirmOpen(true);
   }
 
   // ── Login Screen ──
@@ -584,6 +588,16 @@ export default function AdminQuotesPage() {
             );
           })}
         </div>
+
+        <ConfirmModal
+          open={confirmOpen}
+          title="Cancel Quote"
+          message="Cancel this quote request?"
+          confirmLabel="Cancel Request"
+          variant="danger"
+          onConfirm={() => { pendingAction?.(); setConfirmOpen(false); setPendingAction(null); }}
+          onCancel={() => { setConfirmOpen(false); setPendingAction(null); }}
+        />
       </div>
     </main>
   );

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { formatPrice } from "@/lib/format";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import type { ValuatedCard, PortfolioSummary, PortfolioSnapshot, ListingAction } from "@/lib/portfolio/types";
 
 type SortKey = "value" | "pnl" | "recent";
@@ -19,6 +20,8 @@ export default function PortfolioPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ quantity: 1, acquisitionPrice: "", condition: "NM", notes: "" });
   const [saving, setSaving] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   const load = useCallback(() => {
     Promise.all([
@@ -77,10 +80,12 @@ export default function PortfolioPage() {
     load();
   }
 
-  async function removeCard(id: string) {
-    if (!confirm("Remove this card from your portfolio?")) return;
-    await fetch(`/api/portfolio/${id}`, { method: "DELETE" });
-    load();
+  function removeCard(id: string) {
+    setPendingAction(() => async () => {
+      await fetch(`/api/portfolio/${id}`, { method: "DELETE" });
+      load();
+    });
+    setConfirmOpen(true);
   }
 
   if (loading) {
@@ -386,6 +391,16 @@ export default function PortfolioPage() {
           ))}
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmOpen}
+        title="Remove Card"
+        message="Remove this card from your portfolio?"
+        confirmLabel="Remove"
+        variant="danger"
+        onConfirm={() => { pendingAction?.(); setConfirmOpen(false); setPendingAction(null); }}
+        onCancel={() => { setConfirmOpen(false); setPendingAction(null); }}
+      />
     </div>
   );
 }
