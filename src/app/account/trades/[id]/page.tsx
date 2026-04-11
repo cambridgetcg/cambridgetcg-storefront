@@ -161,6 +161,7 @@ export default function TradeDetailPage() {
   const tradeId = params.id as string;
 
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
   const [trade, setTrade] = useState<any>(null);
   const [dispute, setDispute] = useState<TradeDispute | null>(null);
   const [messages, setMessages] = useState<DisputeMessage[]>([]);
@@ -180,7 +181,10 @@ export default function TradeDetailPage() {
   useEffect(() => {
     fetch("/api/auth/session")
       .then((r) => r.json())
-      .then((data) => setLoggedIn(!!data?.user?.email))
+      .then((data) => {
+        setLoggedIn(!!data?.user?.email);
+        if (data?.user?.id) setSessionUserId(data.user.id);
+      })
       .catch(() => setLoggedIn(false));
   }, []);
 
@@ -402,6 +406,46 @@ export default function TradeDetailPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* Escrow payment prompt */}
+      {trade?.escrow_status === "awaiting_payment" && (
+        (() => {
+          const isBuyer = sessionUserId && trade.buyer_id === sessionUserId;
+          const isSeller = sessionUserId && trade.seller_id === sessionUserId;
+          if (isBuyer) {
+            return (
+              <Link
+                href={`/account/trades/${tradeId}/pay`}
+                className="flex items-center justify-between bg-amber-500/15 border-2 border-amber-500/40 rounded-xl p-5 hover:bg-amber-500/20 transition group"
+              >
+                <div>
+                  <p className="text-amber-400 font-bold text-base">Payment required</p>
+                  <p className="text-neutral-400 text-sm mt-0.5">
+                    Complete your bank transfer to proceed with this trade.
+                  </p>
+                </div>
+                <span className="text-amber-400 font-bold text-sm group-hover:translate-x-1 transition-transform">
+                  Pay Now &rarr;
+                </span>
+              </Link>
+            );
+          }
+          if (isSeller) {
+            return (
+              <div className="bg-neutral-900 border border-amber-500/30 rounded-xl p-5 flex items-center gap-3">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-400" />
+                </span>
+                <p className="text-amber-400 text-sm font-medium">
+                  Waiting for buyer payment...
+                </p>
+              </div>
+            );
+          }
+          return null;
+        })()
       )}
 
       {/* Dispute section */}
