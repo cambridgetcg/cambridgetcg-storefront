@@ -2,9 +2,18 @@
 
 import Link from "next/link";
 import { useCart } from "@/context/CartContext";
+import { useEffect, useState } from "react";
 
 export default function Nav() {
   const { totalItems, openDrawer } = useCart();
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((data) => setLoggedIn(!!data?.user?.email))
+      .catch(() => {});
+  }, []);
 
   return (
     <nav className="sticky top-0 z-40 bg-neutral-950/90 backdrop-blur border-b border-neutral-800">
@@ -24,6 +33,12 @@ export default function Nav() {
           </Link>
           <Link href="/about" className="text-sm text-neutral-300 hover:text-white transition">
             About
+          </Link>
+          <Link
+            href={loggedIn ? "/account" : "/login"}
+            className="text-sm text-neutral-300 hover:text-white transition"
+          >
+            {loggedIn ? "Account" : "Sign In"}
           </Link>
           <button
             onClick={openDrawer}

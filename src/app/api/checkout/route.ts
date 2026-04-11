@@ -43,7 +43,7 @@ export async function POST(request: Request) {
         allowed_countries: ["GB", "US", "CA", "AU", "DE", "FR", "NL", "JP"],
       },
       metadata: {
-        skus: JSON.stringify(items.map((i) => ({ sku: i.sku, qty: i.quantity, price_gbp: i.price }))),
+        skus: JSON.stringify(items.map((i) => ({ sku: i.sku, qty: i.quantity, price_gbp: i.price, name: i.name }))),
       },
     });
 
