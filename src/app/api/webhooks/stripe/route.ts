@@ -112,6 +112,32 @@ export async function POST(request: Request) {
       console.error("[webhook] Error processing order:", err);
     }
 
+    // Handle Platinum subscription
+    if (session.metadata?.type === "platinum_subscription" && session.metadata?.user_id) {
+      try {
+        const subUserId = session.metadata.user_id;
+        const tierId = session.metadata.tier_id;
+        const plan = session.metadata.plan;
+        const subId = typeof session.subscription === "string" ? session.subscription : session.subscription?.toString() || session.id;
+
+        // Set expiry based on plan
+        const expiresAt = new Date();
+        if (plan === "annual") expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+        else expiresAt.setMonth(expiresAt.getMonth() + 1);
+
+        await query(
+          `UPDATE users SET paid_tier_id=$2, tier_id=$2, subscription_status='active',
+           subscription_stripe_id=$3, subscription_expires_at=$4,
+           tier_source='subscription', tier_calculated_at=NOW(), updated_at=NOW()
+           WHERE id=$1`,
+          [subUserId, tierId, subId, expiresAt.toISOString()]
+        );
+        console.log(`[webhook] Platinum activated for user ${subUserId} (${plan})`);
+      } catch (err) {
+        console.error("[webhook] Platinum subscription error:", err);
+      }
+    }
+
     // Handle auction payments
     if (session.metadata?.type === "auction_payment" && session.metadata?.auction_id) {
       try {

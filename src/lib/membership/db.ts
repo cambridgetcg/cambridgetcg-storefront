@@ -31,6 +31,7 @@ export async function getUserPerks(userId: string): Promise<TierPerks> {
     p2p_commission_rate: parseFloat(tier.p2p_commission_rate),
     auction_commission_rate: parseFloat(tier.auction_commission_rate),
     auction_priority_approval: tier.auction_priority_approval,
+    store_discount_percent: parseFloat(tier.store_discount_percent || "0"),
   };
 }
 
@@ -40,23 +41,49 @@ export async function getUserPerks(userId: string): Promise<TierPerks> {
 
 export async function recalculateTier(userId: string): Promise<{ tier: Tier | null; changed: boolean }> {
   const tiers = await getAllTiers();
-  const user = await query(`SELECT annual_spend, tier_id FROM users WHERE id = $1`, [userId]);
+  const user = await query(
+    `SELECT annual_spend, tier_id, paid_tier_id, subscription_status, subscription_expires_at FROM users WHERE id = $1`,
+    [userId]
+  );
   if (user.rows.length === 0) return { tier: null, changed: false };
 
-  const annualSpend = parseFloat(user.rows[0].annual_spend || "0");
   const currentTierId = user.rows[0].tier_id;
 
-  // Find highest qualifying tier (sorted ascending by min_annual_spend)
+  // Priority 1: Active paid tier (Platinum) — always wins over spending-based
+  const paidTierId = user.rows[0].paid_tier_id;
+  const subStatus = user.rows[0].subscription_status;
+  const subExpires = user.rows[0].subscription_expires_at;
+  const hasPaidTier = paidTierId && subStatus === "active" &&
+    (!subExpires || new Date(subExpires) > new Date());
+
+  if (hasPaidTier) {
+    const paidTier = tiers.find(t => t.id === paidTierId) || null;
+    if (paidTier) {
+      const changed = paidTierId !== currentTierId;
+      if (changed) {
+        await query(
+          `UPDATE users SET tier_id=$1, tier_source='subscription', tier_calculated_at=NOW(), updated_at=NOW() WHERE id=$2`,
+          [paidTierId, userId]
+        );
+      }
+      return { tier: paidTier, changed };
+    }
+  }
+
+  // Priority 2: Spending-based tier
+  const annualSpend = parseFloat(user.rows[0].annual_spend || "0");
+
+  // Find highest qualifying FREE tier (sorted ascending by min_annual_spend)
   let qualifiedTier: Tier | null = null;
   for (const tier of tiers) {
-    if (annualSpend >= parseFloat(tier.min_annual_spend)) {
+    if (!tier.is_paid && annualSpend >= parseFloat(tier.min_annual_spend)) {
       qualifiedTier = tier;
     }
   }
 
   // Default to lowest tier (Bronze) if none qualified
-  if (!qualifiedTier && tiers.length > 0) {
-    qualifiedTier = tiers[0];
+  if (!qualifiedTier) {
+    qualifiedTier = tiers.find(t => !t.is_paid) || tiers[0] || null;
   }
 
   const newTierId = qualifiedTier?.id ?? null;
@@ -86,6 +113,8 @@ export async function getMemberProfile(userId: string): Promise<MemberProfile> {
        t.cashback_percent as t_cashback, t.points_multiplier as t_mult,
        t.tradein_bonus_percent as t_tradein, t.p2p_commission_rate as t_p2p,
        t.auction_commission_rate as t_auction, t.auction_priority_approval as t_priority,
+       t.store_discount_percent as t_discount, t.is_paid as t_paid,
+       t.monthly_price as t_monthly, t.annual_price as t_annual,
        t.benefits as t_benefits
      FROM users u LEFT JOIN tiers t ON u.tier_id = t.id WHERE u.id = $1`,
     [userId]
@@ -107,6 +136,8 @@ export async function getMemberProfile(userId: string): Promise<MemberProfile> {
     cashback_percent: u.t_cashback, points_multiplier: u.t_mult,
     tradein_bonus_percent: u.t_tradein, p2p_commission_rate: u.t_p2p,
     auction_commission_rate: u.t_auction, auction_priority_approval: u.t_priority,
+    store_discount_percent: u.t_discount || "0", is_paid: u.t_paid || false,
+    monthly_price: u.t_monthly || null, annual_price: u.t_annual || null,
     benefits: u.t_benefits || [], is_active: true,
   } : null;
 
@@ -140,6 +171,7 @@ export async function getMemberProfile(userId: string): Promise<MemberProfile> {
       p2p_commission_rate: parseFloat(tier.p2p_commission_rate),
       auction_commission_rate: parseFloat(tier.auction_commission_rate),
       auction_priority_approval: tier.auction_priority_approval,
+      store_discount_percent: parseFloat(tier.store_discount_percent || "0"),
     } : DEFAULT_PERKS,
   };
 }

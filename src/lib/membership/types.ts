@@ -12,6 +12,10 @@ export interface Tier {
   p2p_commission_rate: string;
   auction_commission_rate: string;
   auction_priority_approval: boolean;
+  store_discount_percent: string;
+  is_paid: boolean;
+  monthly_price: string | null;
+  annual_price: string | null;
   benefits: string[];
   is_active: boolean;
 }
@@ -62,6 +66,7 @@ export interface TierPerks {
   p2p_commission_rate: number;
   auction_commission_rate: number;
   auction_priority_approval: boolean;
+  store_discount_percent: number;
 }
 
 export const POINTS_TYPES = {
@@ -89,4 +94,5 @@ export const DEFAULT_PERKS: TierPerks = {
   p2p_commission_rate: 0.08,
   auction_commission_rate: 0.12,
   auction_priority_approval: false,
+  store_discount_percent: 0,
 };
