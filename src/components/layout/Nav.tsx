@@ -9,6 +9,7 @@ const NAV_LINKS = [
   { href: "/catalog?game=one-piece", label: "One Piece" },
   { href: "/catalog", label: "Catalog" },
   { href: "/auctions", label: "Auctions" },
+  { href: "/market", label: "Market" },
   { href: "/trade-in", label: "Trade In" },
   { href: "/about", label: "About" },
 ];
