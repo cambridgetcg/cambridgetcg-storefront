@@ -111,24 +111,26 @@ export default function OrdersPage() {
                         )}
                       </div>
                     )}
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-neutral-500 text-xs uppercase tracking-wide">
-                          <th className="text-left py-2">Item</th>
-                          <th className="text-center py-2">Qty</th>
-                          <th className="text-right py-2">Price</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(order.items || []).map((item, idx) => (
-                          <tr key={idx} className="border-t border-neutral-800">
-                            <td className="py-2 text-white">{item.name}</td>
-                            <td className="py-2 text-center text-neutral-300">{item.qty}</td>
-                            <td className="py-2 text-right text-neutral-300">{formatPrice(item.price_gbp * item.qty)}</td>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm min-w-[320px]">
+                        <thead>
+                          <tr className="text-neutral-500 text-xs uppercase tracking-wide">
+                            <th className="text-left py-2">Item</th>
+                            <th className="text-center py-2 w-12">Qty</th>
+                            <th className="text-right py-2 w-20">Price</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {(order.items || []).map((item, idx) => (
+                            <tr key={idx} className="border-t border-neutral-800">
+                              <td className="py-2 text-white">{item.name}</td>
+                              <td className="py-2 text-center text-neutral-300">{item.qty}</td>
+                              <td className="py-2 text-right text-neutral-300 whitespace-nowrap">{formatPrice(item.price_gbp * item.qty)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>

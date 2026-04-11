@@ -59,7 +59,7 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
         <span className="text-neutral-400">{card.card_number}</span>
       </nav>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-12">
         {/* Card image */}
         <div className="relative aspect-[3/4] rounded-xl overflow-hidden bg-neutral-900">
           {card.image_url && (

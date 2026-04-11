@@ -275,36 +275,38 @@ export default function AdminTradeInsPage() {
                   )}
 
                   {/* Items table */}
-                  <table className="w-full text-sm mb-4">
-                    <thead>
-                      <tr className="text-neutral-500 text-xs uppercase tracking-wide">
-                        <th className="text-left py-2">Card</th>
-                        <th className="text-center py-2">Qty</th>
-                        <th className="text-right py-2">Cash</th>
-                        <th className="text-right py-2">Credit</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map((item) => (
-                        <tr key={item.id} className="border-t border-neutral-800">
-                          <td className="py-2 text-white">
-                            {item.name}
-                            <span className="text-neutral-500 ml-2 text-xs">{item.card_number}</span>
-                          </td>
-                          <td className="py-2 text-center text-neutral-300">{item.quantity}</td>
-                          <td className="py-2 text-right text-neutral-300">
-                            {formatPrice(parseFloat(item.quoted_cash_price || "0") * item.quantity)}
-                          </td>
-                          <td className="py-2 text-right text-neutral-300">
-                            {formatPrice(parseFloat(item.quoted_credit_price || "0") * item.quantity)}
-                          </td>
+                  <div className="overflow-x-auto mb-4">
+                    <table className="w-full text-sm min-w-[400px]">
+                      <thead>
+                        <tr className="text-neutral-500 text-xs uppercase tracking-wide">
+                          <th className="text-left py-2">Card</th>
+                          <th className="text-center py-2 w-12">Qty</th>
+                          <th className="text-right py-2 w-20">Cash</th>
+                          <th className="text-right py-2 w-20">Credit</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {items.map((item) => (
+                          <tr key={item.id} className="border-t border-neutral-800">
+                            <td className="py-2 text-white">
+                              {item.name}
+                              <span className="text-neutral-500 ml-2 text-xs hidden sm:inline">{item.card_number}</span>
+                            </td>
+                            <td className="py-2 text-center text-neutral-300">{item.quantity}</td>
+                            <td className="py-2 text-right text-neutral-300 whitespace-nowrap">
+                              {formatPrice(parseFloat(item.quoted_cash_price || "0") * item.quantity)}
+                            </td>
+                            <td className="py-2 text-right text-neutral-300 whitespace-nowrap">
+                              {formatPrice(parseFloat(item.quoted_credit_price || "0") * item.quantity)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
 
                   {/* Status update */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-neutral-500">Update status:</span>
                     {STATUSES.map((st) => (
                       <button

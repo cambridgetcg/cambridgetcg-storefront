@@ -111,35 +111,37 @@ export default function TradeInsPage() {
                         Quote valid until {new Date(s.quote_expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                       </p>
                     )}
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="text-neutral-500 text-xs uppercase tracking-wide">
-                          <th className="text-left py-2">Card</th>
-                          <th className="text-center py-2">Qty</th>
-                          <th className="text-right py-2">
-                            {s.payment_method === "cash" ? "Cash" : "Credit"}
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {items.map((item, idx) => (
-                          <tr key={idx} className="border-t border-neutral-800">
-                            <td className="py-2 text-white">
-                              {item.name}
-                              <span className="text-neutral-500 ml-2 text-xs">{item.card_number}</span>
-                            </td>
-                            <td className="py-2 text-center text-neutral-300">{item.quantity}</td>
-                            <td className="py-2 text-right text-neutral-300">
-                              {formatPrice(
-                                parseFloat(
-                                  (s.payment_method === "cash" ? item.quoted_cash_price : item.quoted_credit_price) || "0"
-                                ) * item.quantity
-                              )}
-                            </td>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm min-w-[320px]">
+                        <thead>
+                          <tr className="text-neutral-500 text-xs uppercase tracking-wide">
+                            <th className="text-left py-2">Card</th>
+                            <th className="text-center py-2 w-12">Qty</th>
+                            <th className="text-right py-2 w-20">
+                              {s.payment_method === "cash" ? "Cash" : "Credit"}
+                            </th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {items.map((item, idx) => (
+                            <tr key={idx} className="border-t border-neutral-800">
+                              <td className="py-2 text-white">
+                                {item.name}
+                                <span className="text-neutral-500 ml-2 text-xs hidden sm:inline">{item.card_number}</span>
+                              </td>
+                              <td className="py-2 text-center text-neutral-300">{item.quantity}</td>
+                              <td className="py-2 text-right text-neutral-300 whitespace-nowrap">
+                                {formatPrice(
+                                  parseFloat(
+                                    (s.payment_method === "cash" ? item.quoted_cash_price : item.quoted_credit_price) || "0"
+                                  ) * item.quantity
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>
