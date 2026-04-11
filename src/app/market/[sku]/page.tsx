@@ -16,8 +16,9 @@ const CONDITIONS = [
 ];
 
 type UnifiedAsk = OrderBookEntry & { is_house?: boolean };
+type UnifiedBid = OrderBookEntry & { is_house?: boolean; is_credit?: boolean; label?: string };
 
-function OrderBookViz({ bids, asks }: { bids: OrderBookEntry[]; asks: UnifiedAsk[] }) {
+function OrderBookViz({ bids, asks }: { bids: UnifiedBid[]; asks: UnifiedAsk[] }) {
   const maxBidQty = Math.max(1, ...bids.map((b) => b.total_quantity));
   const maxAskQty = Math.max(1, ...asks.map((a) => a.total_quantity));
   const maxRows = Math.max(bids.length, asks.length, 1);
@@ -50,7 +51,7 @@ function BidAskRow({
   maxAskQty,
   isFirst,
 }: {
-  bid?: OrderBookEntry;
+  bid?: UnifiedBid;
   ask?: UnifiedAsk;
   maxBidQty: number;
   maxAskQty: number;
@@ -63,19 +64,31 @@ function BidAskRow({
     ? isHouse ? "border-l-2 border-amber-500/40" : "border-l-2 border-red-500/40"
     : "border-l border-neutral-800";
 
+  const isBidHouse = bid?.is_house && bid?.is_credit;
+  const bidBgColor = isBidHouse ? "bg-purple-500/20" : "bg-emerald-500/20";
+  const bidTextColor = isBidHouse ? "text-purple-400" : "text-emerald-400";
+  const bidBorderColor = isFirst
+    ? isBidHouse ? "border-r-2 border-purple-500/40" : "border-r-2 border-emerald-500/40"
+    : "border-r border-neutral-800";
+
   return (
     <>
       {/* Bid cell */}
-      <div className={`relative h-8 flex items-center ${isFirst ? "border-r-2 border-emerald-500/40" : "border-r border-neutral-800"}`}>
+      <div className={`relative h-8 flex items-center ${bidBorderColor}`}>
         {bid ? (
           <>
             <div
-              className="absolute inset-y-0 right-0 bg-emerald-500/20 rounded-l"
-              style={{ width: `${(bid.total_quantity / maxBidQty) * 100}%` }}
+              className={`absolute inset-y-0 right-0 ${bidBgColor} rounded-l`}
+              style={{ width: `${(Math.min(bid.total_quantity, maxBidQty) / maxBidQty) * 100}%` }}
             />
             <span className="relative z-10 w-full flex justify-between px-2 text-xs font-mono">
-              <span className="text-neutral-400">{bid.total_quantity}</span>
-              <span className="text-emerald-400 font-medium">{formatPrice(Number(bid.price))}</span>
+              <span className="text-neutral-400">{isBidHouse ? "\u221E" : bid.total_quantity}</span>
+              <span className={`${bidTextColor} font-medium flex items-center gap-1`}>
+                {isBidHouse && <span title="CTCG Store Credit">&#127978;</span>}
+                {formatPrice(Number(bid.price))}
+                {isBidHouse && <span className="text-[10px] text-purple-400/80 font-sans font-semibold">CTCG</span>}
+                {isBidHouse && <span className="text-[9px] bg-purple-500/20 text-purple-400 px-1 py-px rounded font-sans">credit</span>}
+              </span>
             </span>
           </>
         ) : (
@@ -153,14 +166,36 @@ function SpotPricePanel({ view }: { view: UnifiedMarketView }) {
         </div>
       )}
 
-      {/* Trade-in context for sellers */}
-      {(tradein_credit != null || tradein_cash != null) && (
+      {/* CTCG two-sided spread */}
+      {spot_price != null && tradein_credit != null && (
+        <div className="border-t border-neutral-800 pt-2 mt-2 space-y-1.5">
+          <span className="text-[10px] text-neutral-500 uppercase tracking-wide">CTCG Spread</span>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-neutral-400">CTCG Sells at</span>
+            <span className="text-xs font-mono text-amber-400 font-semibold">{formatPrice(spot_price)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-neutral-400">CTCG Buys at</span>
+            <span className="text-xs font-mono text-purple-400 font-semibold">
+              {formatPrice(tradein_credit)}
+              <span className="ml-1 text-[9px] bg-purple-500/20 text-purple-400 px-1 py-px rounded">credit</span>
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-neutral-500">Spread</span>
+            <span className="text-xs font-mono text-neutral-500">{formatPrice(spot_price - tradein_credit)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Trade-in reference (when no full spread available) */}
+      {spot_price == null && (tradein_credit != null || tradein_cash != null) && (
         <div className="border-t border-neutral-800 pt-2 mt-2 space-y-1">
           <span className="text-[10px] text-neutral-500 uppercase tracking-wide">Trade-in reference</span>
           {tradein_credit != null && (
             <div className="flex items-center justify-between">
               <span className="text-xs text-neutral-500">Trade-in credit</span>
-              <span className="text-xs font-mono text-neutral-300">~{formatPrice(tradein_credit)}</span>
+              <span className="text-xs font-mono text-purple-400">~{formatPrice(tradein_credit)}</span>
             </div>
           )}
           {tradein_cash != null && (
@@ -169,6 +204,14 @@ function SpotPricePanel({ view }: { view: UnifiedMarketView }) {
               <span className="text-xs font-mono text-neutral-300">~{formatPrice(tradein_cash)}</span>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Cash trade-in (shown alongside spread if available) */}
+      {spot_price != null && tradein_cash != null && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-neutral-500">Cash trade-in</span>
+          <span className="text-xs font-mono text-neutral-300">~{formatPrice(tradein_cash)}</span>
         </div>
       )}
     </div>
@@ -535,6 +578,32 @@ export default function CardMarketPage() {
                   </div>
                 )}
               </form>
+            )}
+
+            {/* Sell to CTCG section */}
+            {book.tradein_credit != null && book.tradein_credit > 0 && (
+              <div className="mt-4 bg-purple-500/5 border border-purple-500/20 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-lg">&#127978;</span>
+                  <h3 className="text-sm font-bold text-white">Sell to Cambridge TCG</h3>
+                </div>
+                <p className="text-xs text-neutral-400 mb-2">We&apos;ll buy this card for:</p>
+                <p className="text-xl font-bold text-purple-400 mb-1">
+                  {formatPrice(book.tradein_credit)}{" "}
+                  <span className="text-sm bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-semibold">
+                    Store Credit
+                  </span>
+                </p>
+                <p className="text-[11px] text-neutral-500 mt-2 mb-4 leading-relaxed">
+                  Store credit can only be used to buy from our store. Instant credit to your account.
+                </p>
+                <Link
+                  href="/trade-in"
+                  className="block w-full text-center py-2.5 rounded-lg font-bold text-sm bg-purple-600 text-white hover:bg-purple-500 transition"
+                >
+                  Sell for Store Credit
+                </Link>
+              </div>
             )}
           </div>
         </div>

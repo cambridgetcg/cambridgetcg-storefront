@@ -1,10 +1,22 @@
-// Unified market view: merges CTCG spot prices with P2P order book
-// CTCG's catalog price acts as a standing ask (market maker liquidity)
+// Unified market view: CTCG as two-sided market maker
+//
+// CTCG provides liquidity on BOTH sides:
+//   ASK side: catalog retail price (buy from CTCG)
+//   BID side: trade-in credit price (sell to CTCG for store credit)
+//
+// Store credit is the absorption mechanism — it can only be spent at CTCG,
+// creating a flywheel: sell cards → get credit → buy cards → sell cards
 
-import { fetchCard, type PriceItem } from "@/lib/wholesale/client";
+import { fetchCard } from "@/lib/wholesale/client";
 import { retailPrice } from "@/lib/pricing";
 import { getCardOrderBook } from "./db";
 import type { CardOrderBook, OrderBookEntry } from "./types";
+
+export interface HouseOrderEntry extends OrderBookEntry {
+  is_house?: boolean;
+  is_credit?: boolean; // true = paid in store credit, not cash
+  label?: string;
+}
 
 export interface UnifiedMarketView {
   sku: string;
@@ -15,29 +27,29 @@ export interface UnifiedMarketView {
   image_url: string | null;
   rarity: string | null;
 
-  // CTCG spot price (always-available liquidity)
+  // CTCG spot price (always-available liquidity — sell side)
   spot_price: number | null;
   spot_stock: number;
 
-  // Trade-in prices (helps sellers price their asks)
-  tradein_credit: number | null;
-  tradein_cash: number | null;
+  // CTCG trade-in (always-available liquidity — buy side)
+  tradein_credit: number | null;  // Store credit offer
+  tradein_cash: number | null;    // Cash offer (lower)
 
-  // Merged order book (CTCG ask injected into P2P asks)
-  bids: OrderBookEntry[];
-  asks: (OrderBookEntry & { is_house?: boolean })[];
+  // Merged order book (CTCG injected on BOTH sides)
+  bids: HouseOrderEntry[];
+  asks: HouseOrderEntry[];
   recent_trades: CardOrderBook["recent_trades"];
 
   // Derived
   best_bid: number | null;
-  best_ask: number | null;     // cheapest available (could be P2P or CTCG)
-  market_price: number | null; // = best_ask (cheapest way to buy)
+  best_ask: number | null;
+  market_price: number | null;
   spread: number | null;
-  p2p_discount: number | null; // % cheaper than CTCG spot (if P2P ask < spot)
+  p2p_discount: number | null;
+  ctcg_spread: number | null;    // retail - tradein credit = CTCG margin
 }
 
 export async function getUnifiedMarketView(sku: string): Promise<UnifiedMarketView> {
-  // Fetch all data in parallel
   const [card, orderBook, tradeinCreditCard, tradeinCashCard] = await Promise.all([
     fetchCard(sku).catch(() => null),
     getCardOrderBook(sku),
@@ -47,15 +59,13 @@ export async function getUnifiedMarketView(sku: string): Promise<UnifiedMarketVi
 
   const tradeinCredit = tradeinCreditCard?.channel_price ?? null;
   const tradeinCash = tradeinCashCard?.channel_price ?? null;
-
   const spotPrice = card ? retailPrice(card.price_gbp, card.channel_price) : null;
   const spotStock = card?.stock ?? 0;
 
-  // Inject CTCG house ask into the order book
-  const asks: (OrderBookEntry & { is_house?: boolean })[] = [...orderBook.asks];
-
+  // ── Build ASKS (sell side) ──
+  // Inject CTCG retail price as house ask
+  const asks: HouseOrderEntry[] = [...orderBook.asks];
   if (spotPrice && spotStock > 0) {
-    // Find where to insert CTCG's price in the sorted asks (ascending)
     let inserted = false;
     for (let i = 0; i < asks.length; i++) {
       if (spotPrice <= parseFloat(asks[i].price)) {
@@ -64,6 +74,7 @@ export async function getUnifiedMarketView(sku: string): Promise<UnifiedMarketVi
           total_quantity: spotStock,
           order_count: 1,
           is_house: true,
+          label: "CTCG Store",
         });
         inserted = true;
         break;
@@ -75,19 +86,53 @@ export async function getUnifiedMarketView(sku: string): Promise<UnifiedMarketVi
         total_quantity: spotStock,
         order_count: 1,
         is_house: true,
+        label: "CTCG Store",
       });
     }
   }
 
-  const bestBid = orderBook.bids.length > 0 ? parseFloat(orderBook.bids[0].price) : null;
+  // ── Build BIDS (buy side) ──
+  // Inject CTCG trade-in credit as house bid (always willing to buy at this price)
+  const bids: HouseOrderEntry[] = [...orderBook.bids];
+  if (tradeinCredit && tradeinCredit > 0) {
+    // Insert at correct position (bids sorted descending by price)
+    let inserted = false;
+    for (let i = 0; i < bids.length; i++) {
+      if (tradeinCredit >= parseFloat(bids[i].price)) {
+        bids.splice(i, 0, {
+          price: tradeinCredit.toFixed(2),
+          total_quantity: 999, // Always willing to buy
+          order_count: 1,
+          is_house: true,
+          is_credit: true,
+          label: "CTCG Credit",
+        });
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) {
+      bids.push({
+        price: tradeinCredit.toFixed(2),
+        total_quantity: 999,
+        order_count: 1,
+        is_house: true,
+        is_credit: true,
+        label: "CTCG Credit",
+      });
+    }
+  }
+
+  const bestBid = bids.length > 0 ? parseFloat(bids[0].price) : null;
   const bestAsk = asks.length > 0 ? parseFloat(asks[0].price) : null;
   const spread = bestBid !== null && bestAsk !== null ? bestAsk - bestBid : null;
 
-  // P2P discount: how much cheaper is the best P2P ask vs CTCG spot?
   let p2pDiscount: number | null = null;
   if (spotPrice && bestAsk && bestAsk < spotPrice) {
     p2pDiscount = Math.round(((spotPrice - bestAsk) / spotPrice) * 100);
   }
+
+  const ctcgSpread = spotPrice && tradeinCredit ? spotPrice - tradeinCredit : null;
 
   return {
     sku,
@@ -101,7 +146,7 @@ export async function getUnifiedMarketView(sku: string): Promise<UnifiedMarketVi
     spot_stock: spotStock,
     tradein_credit: tradeinCredit,
     tradein_cash: tradeinCash,
-    bids: orderBook.bids,
+    bids,
     asks,
     recent_trades: orderBook.recent_trades,
     best_bid: bestBid,
@@ -109,32 +154,6 @@ export async function getUnifiedMarketView(sku: string): Promise<UnifiedMarketVi
     market_price: bestAsk,
     spread,
     p2p_discount: p2pDiscount,
+    ctcg_spread: ctcgSpread,
   };
-}
-
-// Enrich market summaries with spot prices for the browse page
-export async function enrichWithSpotPrices(
-  skus: string[]
-): Promise<Map<string, { spot_price: number; stock: number }>> {
-  const result = new Map<string, { spot_price: number; stock: number }>();
-
-  // Batch fetch — get all cards' prices from wholesale
-  // This is called per-page so we do individual fetches (wholesale API doesn't have batch by SKU)
-  await Promise.all(
-    skus.map(async (sku) => {
-      try {
-        const card = await fetchCard(sku);
-        if (card) {
-          result.set(sku, {
-            spot_price: retailPrice(card.price_gbp, card.channel_price),
-            stock: card.stock,
-          });
-        }
-      } catch {
-        // Skip failed lookups
-      }
-    })
-  );
-
-  return result;
 }

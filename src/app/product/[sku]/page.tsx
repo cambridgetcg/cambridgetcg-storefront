@@ -160,7 +160,10 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
             const hasRecentTrades = recentTrades24h.length > 0;
             const hasActivity = hasBids || hasP2pAsks || hasRecentTrades;
 
-            if (!hasActivity) {
+            // CTCG trade-in credit (show even if no P2P activity)
+            const hasTradeinCredit = market.tradein_credit != null && market.tradein_credit > 0;
+
+            if (!hasActivity && !hasTradeinCredit) {
               return (
                 <Link
                   href={`/market/${sku}`}
@@ -168,6 +171,33 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
                 >
                   Trade this card P2P &rarr;
                 </Link>
+              );
+            }
+
+            if (!hasActivity && hasTradeinCredit) {
+              return (
+                <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 flex flex-col gap-3">
+                  <h3 className="text-sm font-semibold text-neutral-300 uppercase tracking-wider">Market</h3>
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 mt-0.5 px-2 py-0.5 text-xs font-bold rounded-full bg-purple-500/20 text-purple-400">
+                      CTCG Bid
+                    </span>
+                    <div className="text-sm text-neutral-300">
+                      CTCG buys this card for{" "}
+                      <span className="text-purple-400 font-semibold">{formatPrice(market.tradein_credit!)}</span>{" "}
+                      <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1 py-0.5 rounded font-semibold">store credit</span>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-neutral-500">
+                    Store credit can only be used at Cambridge TCG. Instant credit to your account.
+                  </p>
+                  <Link
+                    href={`/market/${sku}`}
+                    className="text-sm text-neutral-500 hover:text-white transition"
+                  >
+                    View full order book &rarr;
+                  </Link>
+                </div>
               );
             }
 
@@ -236,6 +266,20 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
                     >
                       Sell yours
                     </Link>
+                  </div>
+                )}
+
+                {/* CTCG trade-in credit */}
+                {hasTradeinCredit && (
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 mt-0.5 px-2 py-0.5 text-xs font-bold rounded-full bg-purple-500/20 text-purple-400">
+                      CTCG Bid
+                    </span>
+                    <div className="text-sm text-neutral-300">
+                      CTCG buys this card for{" "}
+                      <span className="text-purple-400 font-semibold">{formatPrice(market.tradein_credit!)}</span>{" "}
+                      <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1 py-0.5 rounded font-semibold">store credit</span>
+                    </div>
                   </div>
                 )}
 

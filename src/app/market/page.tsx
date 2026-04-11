@@ -24,6 +24,7 @@ interface CatalogCard {
   p2p_sellers: number;
   p2p_buyers: number;
   has_p2p: boolean;
+  tradein_credit: number | null;
 }
 
 interface SetInfo {
@@ -71,7 +72,7 @@ function pctDiff(market: number, spot: number): number {
 function SkeletonRow() {
   return (
     <tr className="animate-pulse">
-      {Array.from({ length: 10 }).map((_, i) => (
+      {Array.from({ length: 11 }).map((_, i) => (
         <td key={i} className="px-3 py-3">
           <div className="h-4 bg-neutral-800 rounded w-full" />
         </td>
@@ -175,6 +176,7 @@ export default function MarketPage() {
   const currentPage = Math.floor(offset / limit) + 1;
   const p2pCardCount = cards.filter((c) => c.has_p2p).length;
   const totalP2PSellers = cards.reduce((sum, c) => sum + c.p2p_sellers, 0);
+  const ctcgBuyingCount = cards.filter((c) => c.tradein_credit != null && c.tradein_credit > 0).length;
 
   /* ---- set click ---- */
   function selectSet(code: string | null) {
@@ -205,6 +207,11 @@ export default function MarketPage() {
           <div className="px-3 py-1.5 bg-neutral-900 rounded-lg text-neutral-300">
             <span className="text-amber-400 font-semibold">{totalP2PSellers}</span> P2P sellers
           </div>
+          {ctcgBuyingCount > 0 && (
+            <div className="px-3 py-1.5 bg-neutral-900 rounded-lg text-neutral-300">
+              <span className="text-purple-400 font-semibold">{ctcgBuyingCount}</span> CTCG buying
+            </div>
+          )}
         </div>
 
         <div className="flex gap-6">
@@ -370,6 +377,7 @@ export default function MarketPage() {
                       <th className="px-3 py-2.5 text-left">Rarity</th>
                       <th className="px-3 py-2.5 text-left">Set</th>
                       <th className="px-3 py-2.5 text-right">CTCG Price</th>
+                      <th className="px-3 py-2.5 text-right">CTCG Bid</th>
                       <th className="px-3 py-2.5 text-right">Market</th>
                       <th className="px-3 py-2.5 text-center">P2P Sellers</th>
                       <th className="px-3 py-2.5 text-center">P2P Buyers</th>
@@ -427,6 +435,7 @@ export default function MarketPage() {
                       <th className="px-3 py-2.5 text-left">Rarity</th>
                       <th className="px-3 py-2.5 text-left">Set</th>
                       <th className="px-3 py-2.5 text-right">CTCG Price</th>
+                      <th className="px-3 py-2.5 text-right">CTCG Bid</th>
                       <th className="px-3 py-2.5 text-right">Market</th>
                       <th className="px-3 py-2.5 text-center">P2P Sellers</th>
                       <th className="px-3 py-2.5 text-center">P2P Buyers</th>
@@ -481,6 +490,20 @@ export default function MarketPage() {
                           {/* CTCG Price */}
                           <td className="px-3 py-2 text-right text-amber-400 font-semibold whitespace-nowrap">
                             {formatPrice(card.spot_price)}
+                          </td>
+
+                          {/* CTCG Bid (trade-in credit) */}
+                          <td className="px-3 py-2 text-right whitespace-nowrap">
+                            {card.tradein_credit != null && card.tradein_credit > 0 ? (
+                              <span className="text-purple-400 font-semibold" title="Store Credit — can only be used at Cambridge TCG">
+                                {formatPrice(card.tradein_credit)}
+                                <span className="ml-1 text-[10px] bg-purple-500/20 text-purple-400 px-1 py-0.5 rounded font-semibold">
+                                  credit
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-neutral-600 text-xs">&mdash;</span>
+                            )}
                           </td>
 
                           {/* Market Price */}
@@ -578,6 +601,13 @@ export default function MarketPage() {
                       <p className="text-sm font-bold text-amber-400">
                         {formatPrice(card.spot_price)}
                       </p>
+
+                      {/* CTCG trade-in credit */}
+                      {card.tradein_credit != null && card.tradein_credit > 0 && (
+                        <p className="text-[11px] text-purple-400 mt-0.5" title="Store Credit — can only be used at Cambridge TCG">
+                          We buy: {formatPrice(card.tradein_credit)} credit
+                        </p>
+                      )}
 
                       {/* P2P indicator */}
                       {card.has_p2p && (

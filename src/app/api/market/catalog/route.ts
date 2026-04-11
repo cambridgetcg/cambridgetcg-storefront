@@ -73,11 +73,24 @@ export async function GET(request: Request) {
     }
   }
 
+  // Fetch trade-in credit prices (CTCG standing bids)
+  const tradeinData = await fetchPrices({
+    game, set, limit: 2000, channel: "tradein-credit",
+  }).catch(() => ({ items: [] }));
+
+  const tradeinMap = new Map<string, number>();
+  for (const item of tradeinData.items) {
+    if (item.channel_price && item.channel_price > 0) {
+      tradeinMap.set(item.sku, item.channel_price);
+    }
+  }
+
   const cards = data.items.map(item => {
     const spot = retailPrice(item.price_gbp, item.channel_price);
     const p2p = p2pData.get(item.sku);
     const bestAsk = p2p?.best_ask ? parseFloat(p2p.best_ask) : null;
     const marketPrice = bestAsk && bestAsk < spot ? bestAsk : spot;
+    const tradeinCredit = tradeinMap.get(item.sku) || null;
 
     return {
       sku: item.sku,
@@ -91,6 +104,8 @@ export async function GET(request: Request) {
       spot_price: spot,
       market_price: marketPrice,
       stock: item.stock,
+      // CTCG trade-in bid (store credit — always willing to buy)
+      tradein_credit: tradeinCredit,
       // P2P
       best_bid: p2p?.best_bid ? parseFloat(p2p.best_bid) : null,
       best_ask: bestAsk,
