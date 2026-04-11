@@ -192,6 +192,35 @@ export async function getSubmission(
   return { submission, items: itemsResult.rows as ItemRow[] };
 }
 
+export async function getAllSubmissions(): Promise<{ submission: SubmissionRow; items: ItemRow[] }[]> {
+  const subResult = await query(
+    `SELECT * FROM tradein_submissions ORDER BY created_at DESC`
+  );
+
+  const submissions: { submission: SubmissionRow; items: ItemRow[] }[] = [];
+  for (const row of subResult.rows) {
+    const submission = row as SubmissionRow;
+    const itemsResult = await query(
+      `SELECT * FROM tradein_items WHERE submission_id = $1 ORDER BY id`,
+      [submission.id]
+    );
+    submissions.push({ submission, items: itemsResult.rows as ItemRow[] });
+  }
+
+  return submissions;
+}
+
+export async function updateSubmissionStatus(
+  reference: string,
+  status: string
+): Promise<SubmissionRow | null> {
+  const result = await query(
+    `UPDATE tradein_submissions SET status = $1, updated_at = NOW() WHERE reference = $2 RETURNING *`,
+    [status, reference]
+  );
+  return result.rows.length > 0 ? (result.rows[0] as SubmissionRow) : null;
+}
+
 export async function getSubmissionByRef(
   reference: string
 ): Promise<{ submission: SubmissionRow; items: ItemRow[] } | null> {
