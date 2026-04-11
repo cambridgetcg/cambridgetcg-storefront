@@ -135,16 +135,14 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
 
           {/* Track in Portfolio */}
           <AddToPortfolio
-            card={{
-              sku: card.sku,
-              name: card.name_en || card.name || card.card_number,
-              cardNumber: card.card_number,
-              setCode: card.set_code,
-              setName: card.set_name,
-              imageUrl: card.image_url,
-              rarity: card.rarity,
-              price: retailPrice(card.price_gbp, card.channel_price),
-            }}
+            sku={card.sku}
+            name={card.name_en || card.name || card.card_number}
+            cardNumber={card.card_number}
+            setCode={card.set_code}
+            setName={card.set_name}
+            imageUrl={card.image_url}
+            rarity={card.rarity}
+            price={retailPrice(card.price_gbp, card.channel_price)}
           />
 
           {/* P2P Market Context */}
