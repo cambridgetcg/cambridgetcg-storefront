@@ -16,6 +16,10 @@ interface AuctionSummary {
   starts_at: string;
   ends_at: string;
   image_url: string | null;
+  approval_status?: string | null;
+  seller_user_id?: string | null;
+  seller_name?: string | null;
+  seller_email?: string | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -33,6 +37,12 @@ const TYPE_LABELS: Record<string, string> = {
   buy_now: "Buy Now",
 };
 
+const APPROVAL_COLORS: Record<string, string> = {
+  pending_review: "bg-amber-500/20 text-amber-400",
+  approved: "bg-emerald-500/20 text-emerald-400",
+  rejected: "bg-red-500/20 text-red-400",
+};
+
 const STATUSES = ["draft", "scheduled", "live", "ended", "paid", "cancelled"];
 
 export default function AdminAuctionsPage() {
@@ -43,6 +53,9 @@ export default function AdminAuctionsPage() {
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [rejectNotes, setRejectNotes] = useState<Record<string, string>>({});
+  const [approving, setApproving] = useState<string | null>(null);
+  const [showPendingOnly, setShowPendingOnly] = useState(false);
 
   const fetchAuctions = useCallback(async () => {
     setLoading(true);
@@ -126,6 +139,47 @@ export default function AdminAuctionsPage() {
     }
   }
 
+  async function handleApproval(id: string, action: "approve" | "reject") {
+    if (action === "reject" && !rejectNotes[id]?.trim()) {
+      alert("Please enter rejection notes before rejecting.");
+      return;
+    }
+    setApproving(id);
+    try {
+      const body: { action: string; notes?: string } = { action };
+      if (action === "reject" && rejectNotes[id]) {
+        body.notes = rejectNotes[id];
+      }
+      const res = await fetch(`/api/auctions/${id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAuctions((prev) =>
+          prev.map((a) =>
+            a.id === id
+              ? {
+                  ...a,
+                  approval_status: action === "approve" ? "approved" : "rejected",
+                  status: data.auction?.status || (action === "approve" ? "scheduled" : a.status),
+                }
+              : a
+          )
+        );
+        setRejectNotes((prev) => ({ ...prev, [id]: "" }));
+      } else {
+        const err = await res.json().catch(() => null);
+        alert(err?.error || "Failed to update approval status.");
+      }
+    } catch {
+      alert("Network error.");
+    } finally {
+      setApproving(null);
+    }
+  }
+
   // ── Login Screen ──
   if (!authed) {
     return (
@@ -158,6 +212,10 @@ export default function AdminAuctionsPage() {
   const total = auctions.length;
   const live = auctions.filter((a) => a.status === "live").length;
   const ended = auctions.filter((a) => a.status === "ended" || a.status === "paid").length;
+  const pendingReview = auctions.filter((a) => a.approval_status === "pending_review").length;
+  const displayAuctions = showPendingOnly
+    ? auctions.filter((a) => a.approval_status === "pending_review")
+    : auctions;
 
   return (
     <main className="min-h-screen bg-neutral-950">
@@ -182,11 +240,14 @@ export default function AdminAuctionsPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-          <div className="bg-neutral-900 rounded-xl p-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <button
+            onClick={() => setShowPendingOnly(false)}
+            className={`bg-neutral-900 rounded-xl p-4 text-left transition ${!showPendingOnly ? "ring-2 ring-amber-500/50" : "hover:bg-neutral-800/50"}`}
+          >
             <p className="text-xs text-neutral-500 uppercase tracking-wide">Total</p>
             <p className="text-2xl font-bold text-white mt-1">{total}</p>
-          </div>
+          </button>
           <div className="bg-neutral-900 rounded-xl p-4">
             <p className="text-xs text-neutral-500 uppercase tracking-wide">Live</p>
             <p className="text-2xl font-bold text-emerald-400 mt-1">{live}</p>
@@ -195,15 +256,36 @@ export default function AdminAuctionsPage() {
             <p className="text-xs text-neutral-500 uppercase tracking-wide">Ended</p>
             <p className="text-2xl font-bold text-amber-400 mt-1">{ended}</p>
           </div>
+          <button
+            onClick={() => setShowPendingOnly(true)}
+            className={`bg-neutral-900 rounded-xl p-4 text-left transition ${showPendingOnly ? "ring-2 ring-amber-500/50" : "hover:bg-neutral-800/50"}`}
+          >
+            <p className="text-xs text-neutral-500 uppercase tracking-wide">Pending Review</p>
+            <p className={`text-2xl font-bold mt-1 ${pendingReview > 0 ? "text-amber-400" : "text-neutral-500"}`}>{pendingReview}</p>
+          </button>
         </div>
 
         {/* Auction list */}
-        {auctions.length === 0 && !loading && (
-          <p className="text-neutral-500 text-center py-12">No auctions yet.</p>
+        {showPendingOnly && (
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-sm text-amber-400 font-medium">Showing pending review auctions only</span>
+            <button
+              onClick={() => setShowPendingOnly(false)}
+              className="text-xs text-neutral-400 hover:text-white transition underline"
+            >
+              Show all
+            </button>
+          </div>
+        )}
+
+        {displayAuctions.length === 0 && !loading && (
+          <p className="text-neutral-500 text-center py-12">
+            {showPendingOnly ? "No auctions pending review." : "No auctions yet."}
+          </p>
         )}
 
         <div className="space-y-3">
-          {auctions.map((a) => (
+          {displayAuctions.map((a) => (
             <div key={a.id} className="bg-neutral-900 rounded-xl overflow-hidden">
               {/* Row */}
               <button
@@ -227,6 +309,15 @@ export default function AdminAuctionsPage() {
                     >
                       {a.status}
                     </span>
+                    {a.seller_user_id && a.approval_status && (
+                      <span
+                        className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          APPROVAL_COLORS[a.approval_status] || "bg-neutral-700 text-neutral-300"
+                        }`}
+                      >
+                        {a.approval_status.replace("_", " ")}
+                      </span>
+                    )}
                     <span className="text-xs text-neutral-500">{TYPE_LABELS[a.auction_type] || a.auction_type}</span>
                   </div>
                   <p className="text-xs text-neutral-500 mt-1">
@@ -281,6 +372,49 @@ export default function AdminAuctionsPage() {
                       </p>
                     </div>
                   </div>
+
+                  {/* Approval controls for customer auctions pending review */}
+                  {a.seller_user_id && a.approval_status === "pending_review" && (
+                    <div className="mb-4 p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl">
+                      <h4 className="text-sm font-bold text-amber-400 mb-3">Customer Auction -- Pending Review</h4>
+                      {(a.seller_name || a.seller_email) && (
+                        <div className="text-sm text-neutral-300 mb-3">
+                          <span className="text-neutral-500">Seller: </span>
+                          {a.seller_name && <span className="font-medium">{a.seller_name}</span>}
+                          {a.seller_email && (
+                            <span className="text-neutral-400 ml-1">({a.seller_email})</span>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <button
+                          onClick={() => handleApproval(a.id, "approve")}
+                          disabled={approving === a.id}
+                          className="px-4 py-2 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-500 transition disabled:opacity-50"
+                        >
+                          {approving === a.id ? "Processing..." : "Approve"}
+                        </button>
+                        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                          <input
+                            type="text"
+                            placeholder="Rejection notes (required)"
+                            value={rejectNotes[a.id] || ""}
+                            onChange={(e) =>
+                              setRejectNotes((prev) => ({ ...prev, [a.id]: e.target.value }))
+                            }
+                            className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+                          />
+                          <button
+                            onClick={() => handleApproval(a.id, "reject")}
+                            disabled={approving === a.id}
+                            className="px-4 py-2 bg-red-600 text-white text-sm font-bold rounded-lg hover:bg-red-500 transition disabled:opacity-50"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Status update */}
                   <div className="flex items-center gap-2 flex-wrap mb-3">

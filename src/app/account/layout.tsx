@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: "/account/orders", label: "Orders" },
   { href: "/account/trade-ins", label: "Trade-Ins" },
   { href: "/account/trades", label: "Trades" },
+  { href: "/account/auctions", label: "My Auctions" },
   { href: "/account/membership", label: "Membership" },
 ];
 

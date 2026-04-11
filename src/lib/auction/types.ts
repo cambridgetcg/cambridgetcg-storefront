@@ -26,6 +26,17 @@ export interface Auction {
   stripe_payment_intent: string | null;
   paid_at: string | null;
   allow_best_offer: boolean;
+  // Customer-created auction fields
+  seller_user_id: string | null;
+  is_consignment: boolean;
+  approval_status: "pending_review" | "approved" | "rejected" | null;
+  approval_notes: string | null;
+  seller_commission_rate: string;
+  seller_payout: string | null;
+  seller_paid_at: string | null;
+  escrow_status: string | null;
+  tracking_to_ctcg: string | null;
+  tracking_to_buyer: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -88,7 +99,13 @@ export interface CreateAuctionInput {
   starts_at: string;
   ends_at: string;
   allow_best_offer?: boolean;
+  seller_user_id?: string;
+  seller_commission_rate?: number;
 }
+
+export type ApprovalStatus = "pending_review" | "approved" | "rejected";
+
+export const SELLER_COMMISSION_RATE = 0.12; // 12% default
 
 export interface BidResult {
   success: boolean;

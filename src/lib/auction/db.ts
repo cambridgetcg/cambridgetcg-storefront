@@ -319,6 +319,110 @@ export async function listAllAuctions(): Promise<AuctionSummary[]> {
   return result.rows as AuctionSummary[];
 }
 
+// ── Customer-created auctions ──
+
+export async function createSellerAuction(userId: string, data: {
+  title: string;
+  description?: string;
+  auction_type: string;
+  starting_price: number;
+  reserve_price?: number;
+  buy_now_price?: number;
+  bid_increment?: number;
+  starts_at: string;
+  ends_at: string;
+  allow_best_offer?: boolean;
+}): Promise<Auction> {
+  const currentPrice = data.starting_price;
+
+  const result = await query(
+    `INSERT INTO auctions (title, description, auction_type, starting_price, reserve_price,
+      buy_now_price, bid_increment, starts_at, ends_at, current_price, allow_best_offer,
+      seller_user_id, is_consignment, approval_status, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false,'pending_review','draft')
+     RETURNING *`,
+    [
+      data.title,
+      data.description || null,
+      data.auction_type,
+      data.starting_price.toFixed(2),
+      data.reserve_price?.toFixed(2) ?? null,
+      data.buy_now_price?.toFixed(2) ?? null,
+      (data.bid_increment || 1).toFixed(2),
+      data.starts_at,
+      data.ends_at,
+      currentPrice.toFixed(2),
+      data.allow_best_offer || false,
+      userId,
+    ]
+  );
+  return result.rows[0] as Auction;
+}
+
+export async function approveAuction(auctionId: string, notes?: string): Promise<Auction | null> {
+  const result = await query(
+    `UPDATE auctions SET approval_status = 'approved', approval_notes = $2,
+     status = 'scheduled', updated_at = NOW()
+     WHERE id = $1 AND approval_status = 'pending_review' RETURNING *`,
+    [auctionId, notes || null]
+  );
+  return result.rows[0] as Auction ?? null;
+}
+
+export async function rejectAuction(auctionId: string, notes: string): Promise<Auction | null> {
+  const result = await query(
+    `UPDATE auctions SET approval_status = 'rejected', approval_notes = $2,
+     status = 'cancelled', updated_at = NOW()
+     WHERE id = $1 AND approval_status = 'pending_review' RETURNING *`,
+    [auctionId, notes]
+  );
+  return result.rows[0] as Auction ?? null;
+}
+
+export async function getUserAuctions(userId: string): Promise<AuctionSummary[]> {
+  const result = await query(
+    `SELECT a.id, a.title, a.auction_type, a.status, a.current_price, a.starting_price,
+            a.buy_now_price, a.bid_count, a.starts_at, a.ends_at,
+            a.approval_status, a.seller_commission_rate, a.seller_payout,
+            (SELECT url FROM auction_images WHERE auction_id = a.id ORDER BY display_order LIMIT 1) as image_url
+     FROM auctions a WHERE a.seller_user_id = $1 ORDER BY a.created_at DESC`,
+    [userId]
+  );
+  return result.rows as AuctionSummary[];
+}
+
+export async function getPendingApprovalAuctions(): Promise<AuctionSummary[]> {
+  const result = await query(
+    `SELECT a.id, a.title, a.auction_type, a.status, a.current_price, a.starting_price,
+            a.buy_now_price, a.bid_count, a.starts_at, a.ends_at,
+            a.approval_status, a.seller_user_id, a.seller_commission_rate,
+            (SELECT url FROM auction_images WHERE auction_id = a.id ORDER BY display_order LIMIT 1) as image_url,
+            u.name as seller_name, u.email as seller_email
+     FROM auctions a
+     LEFT JOIN users u ON a.seller_user_id = u.id
+     WHERE a.approval_status = 'pending_review'
+     ORDER BY a.created_at ASC`
+  );
+  return result.rows as AuctionSummary[];
+}
+
+export async function calculateSellerPayout(auctionId: string): Promise<{ payout: number; commission: number } | null> {
+  const result = await query(`SELECT * FROM auctions WHERE id = $1`, [auctionId]);
+  if (result.rows.length === 0) return null;
+  const auction = result.rows[0];
+  const salePrice = parseFloat(auction.current_price);
+  const rate = parseFloat(auction.seller_commission_rate || "0.12");
+  const commission = Math.round(salePrice * rate * 100) / 100;
+  const payout = salePrice - commission;
+
+  await query(
+    `UPDATE auctions SET seller_payout = $1, updated_at = NOW() WHERE id = $2`,
+    [payout.toFixed(2), auctionId]
+  );
+
+  return { payout, commission };
+}
+
 // ── Lazy status transitions ──
 
 async function transitionScheduledToLive(): Promise<void> {

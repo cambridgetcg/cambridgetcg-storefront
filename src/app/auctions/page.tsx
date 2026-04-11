@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import type { AuctionSummary } from "@/lib/auction/types";
 import AuctionCard from "@/components/auction/AuctionCard";
 
@@ -48,6 +49,17 @@ export default function AuctionsPage() {
           <p className="text-neutral-400 mt-1">
             Bid on cards, sealed product, and more
           </p>
+        </div>
+
+        {/* Sell CTA */}
+        <div className="bg-gradient-to-r from-amber-500/10 to-emerald-500/10 border border-amber-500/20 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+          <div>
+            <h2 className="text-white font-bold">Have a card to sell?</h2>
+            <p className="text-neutral-400 text-sm mt-1">List your cards at auction. We handle verification, escrow, and delivery. 12% commission on sale.</p>
+          </div>
+          <Link href="/auctions/sell" className="shrink-0 px-5 py-2.5 bg-amber-500 text-black text-sm font-bold rounded-lg hover:bg-amber-400 transition">
+            Sell at Auction
+          </Link>
         </div>
 
         {/* Tabs */}
