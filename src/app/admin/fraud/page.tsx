@@ -63,7 +63,7 @@ function formatDateTime(iso: string): string {
 }
 
 function tierForScore(score: number) {
-  let tier = TRUST_TIERS[0];
+  let tier: (typeof TRUST_TIERS)[number] = TRUST_TIERS[0];
   for (const t of TRUST_TIERS) {
     if (score >= t.minScore) tier = t;
   }
