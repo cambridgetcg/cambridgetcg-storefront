@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { href: "/auctions", label: "Auctions" },
   { href: "/market", label: "Market" },
   { href: "/rewards", label: "Rewards" },
+  { href: "/community", label: "Community" },
   { href: "/trade-in", label: "Trade In" },
   { href: "/about", label: "About" },
 ];

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
+  { href: "/account/profile", label: "Profile" },
   { href: "/account/portfolio", label: "Portfolio" },
   { href: "/account", label: "Overview" },
   { href: "/account/orders", label: "Orders" },
