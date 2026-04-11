@@ -54,7 +54,7 @@ export default function RewardsPage() {
     ]).then(([raffleData, boxData, memberData]) => {
       setRaffles(raffleData?.raffles ?? []);
       setBoxes(boxData?.boxes ?? []);
-      if (memberData?.points != null) setPoints(memberData.points);
+      if (memberData?.profile?.points_balance != null) setPoints(memberData.profile.points_balance);
       setLoading(false);
     });
   }, []);

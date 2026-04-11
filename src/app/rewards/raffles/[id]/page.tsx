@@ -54,7 +54,7 @@ export default function RaffleDetailPage() {
         setLoggedIn(true);
         setUserId(session.user.id ?? null);
       }
-      if (memberData?.points != null) setPoints(memberData.points);
+      if (memberData?.profile?.points_balance != null) setPoints(memberData.profile.points_balance);
       setLoading(false);
     });
   }, [id]);

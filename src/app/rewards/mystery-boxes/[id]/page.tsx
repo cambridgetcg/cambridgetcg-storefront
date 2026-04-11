@@ -49,7 +49,7 @@ export default function MysteryBoxDetailPage() {
       const found = (boxData?.boxes ?? []).find((b: MysteryBox) => b.id === id);
       setBox(found ?? null);
       if (session?.user?.email) setLoggedIn(true);
-      if (memberData?.points != null) setPoints(memberData.points);
+      if (memberData?.profile?.points_balance != null) setPoints(memberData.profile.points_balance);
       setLoading(false);
     });
   }, [id]);
