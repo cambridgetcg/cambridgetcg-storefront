@@ -37,6 +37,29 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <Script id="org-jsonld" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          name: "Cambridge TCG",
+          url: "https://cambridgetcg.com",
+          logo: "https://cambridgetcg.com/images/logo.png",
+          description: "UK-based Japanese trading card marketplace. Buy, sell, trade, and collect One Piece, Pokémon, and Dragon Ball TCG cards.",
+          address: { "@type": "PostalAddress", addressLocality: "Cambridge", addressCountry: "GB" },
+          sameAs: [],
+        }) }} />
+        <Script id="website-jsonld" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          name: "Cambridge TCG",
+          url: "https://cambridgetcg.com",
+          potentialAction: {
+            "@type": "SearchAction",
+            target: "https://cambridgetcg.com/market?q={search_term_string}",
+            "query-input": "required name=search_term_string",
+          },
+        }) }} />
+      </head>
       <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`} strategy="afterInteractive" />
       <Script id="gtag-init" strategy="afterInteractive">
         {`

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { fetchCard, fetchPrices } from "@/lib/wholesale/client";
 import { formatRetailPrice, retailPrice } from "@/lib/pricing";
 import { getUnifiedMarketView } from "@/lib/market/unified";
@@ -8,6 +9,27 @@ import Link from "next/link";
 import AddToCart from "@/components/cart/AddToCart";
 import NotifyMe from "@/components/product/NotifyMe";
 import AddToPortfolio from "@/components/product/AddToPortfolio";
+import Script from "next/script";
+
+export async function generateMetadata({ params }: { params: Promise<{ sku: string }> }): Promise<Metadata> {
+  const { sku } = await params;
+  const card = await fetchCard(sku).catch(() => null);
+  if (!card) return { title: "Card Not Found — Cambridge TCG" };
+
+  const name = card.name_en || card.name || card.card_number;
+  const price = retailPrice(card.price_gbp, card.channel_price);
+  const set = card.set_name || card.set_code || "";
+
+  return {
+    title: `${name} ${card.card_number} — £${price.toFixed(2)} — Cambridge TCG`,
+    description: `Buy ${name} (${card.card_number}) from ${set} for £${price.toFixed(2)}. ${card.stock > 0 ? "In stock" : "Out of stock"}. Near Mint, Japanese. Also available from P2P sellers. We buy this card for store credit. Cambridge TCG — UK's Japanese TCG marketplace.`,
+    openGraph: {
+      title: `${name} — £${price.toFixed(2)}`,
+      description: `${card.card_number} · ${set} · ${card.rarity || ""} · ${card.stock > 0 ? "In Stock" : "Out of Stock"}`,
+      images: card.image_url ? [{ url: card.image_url }] : [],
+    },
+  };
+}
 import SellForCreditButton from "@/components/product/SellForCreditButton";
 import CardGrid from "@/components/catalog/CardGrid";
 
@@ -43,8 +65,32 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
 
   // Determine game slug from set_code pattern
   const gameSlug = "onepiece";
+  const cardName = card.name_en || card.name || card.card_number;
+  const cardPrice = retailPrice(card.price_gbp, card.channel_price);
+
+  // JSON-LD structured data
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: `${cardName} ${card.card_number}`,
+    description: `${cardName} from ${card.set_name || ""} (${card.card_number}). ${card.rarity || ""} rarity. Japanese, Near Mint.`,
+    image: card.image_url || undefined,
+    sku: card.sku,
+    brand: { "@type": "Brand", name: "One Piece Card Game" },
+    category: "Trading Cards",
+    offers: {
+      "@type": "Offer",
+      price: cardPrice.toFixed(2),
+      priceCurrency: "GBP",
+      availability: card.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      seller: { "@type": "Organization", name: "Cambridge TCG" },
+      url: `https://cambridgetcg.com/product/${sku}`,
+    },
+  };
 
   return (
+    <>
+    <Script id="product-jsonld" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
     <div className="max-w-6xl mx-auto px-4 py-12">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-neutral-500 mb-8">
@@ -319,5 +365,6 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
         </div>
       )}
     </div>
+    </>
   );
 }
