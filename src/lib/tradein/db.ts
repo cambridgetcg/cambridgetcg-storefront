@@ -8,7 +8,10 @@ interface QueryResult {
 async function query(sql: string, params: unknown[] = []): Promise<QueryResult> {
   // Dynamic import to avoid bundling pg on the client
   const { default: pg } = await import("pg");
-  const pool = new pg.Pool({ connectionString: DATABASE_URL });
+  const pool = new pg.Pool({
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+  });
   try {
     const result = await pool.query(sql, params);
     return { rows: result.rows };
@@ -104,7 +107,10 @@ export async function createSubmission(data: {
   }[];
 }): Promise<SubmissionRow> {
   const { default: pg } = await import("pg");
-  const pool = new pg.Pool({ connectionString: DATABASE_URL });
+  const pool = new pg.Pool({
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+  });
   const client = await pool.connect();
 
   try {
