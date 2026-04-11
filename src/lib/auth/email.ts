@@ -12,14 +12,10 @@ const ses = new SESClient({
 
 const FROM_EMAIL = process.env.AUTH_FROM_EMAIL || "noreply@cambridgetcg.com";
 
-export async function sendVerificationRequest({
-  identifier: email,
-  url,
-}: {
-  identifier: string;
-  url: string;
-  provider: { from: string };
-}) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function sendVerificationRequest(params: any) {
+  const email = params.identifier as string;
+  const url = params.url as string;
   await ses.send(
     new SendEmailCommand({
       Source: FROM_EMAIL,

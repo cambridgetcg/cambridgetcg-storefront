@@ -55,7 +55,8 @@ export async function POST(request: Request) {
       const email = session.customer_details?.email || session.customer_email || "";
       const name = session.customer_details?.name || "";
       const total = (session.amount_total || 0) / 100;
-      const shipping = session.shipping_details;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const shipping = (session as any).shipping_details;
       const shippingAddr = shipping?.address
         ? [shipping.address.line1, shipping.address.line2, shipping.address.city, shipping.address.postal_code, shipping.address.country]
             .filter(Boolean)
