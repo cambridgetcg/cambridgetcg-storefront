@@ -1,4 +1,11 @@
-const DATABASE_URL = process.env.DATABASE_URL;
+// Strip sslmode from the connection string — pg 8.x parses it from the URL
+// and overrides the Pool ssl option, causing RDS cert verification failures
+// on Vercel's serverless runtime.
+function getConnectionConfig() {
+  const raw = process.env.DATABASE_URL || "";
+  const cleaned = raw.replace(/[?&]sslmode=[^&]*/g, "").replace(/\?$/, "");
+  return { connectionString: cleaned, ssl: { rejectUnauthorized: false } };
+}
 
 interface QueryResult {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -8,10 +15,7 @@ interface QueryResult {
 async function query(sql: string, params: unknown[] = []): Promise<QueryResult> {
   // Dynamic import to avoid bundling pg on the client
   const { default: pg } = await import("pg");
-  const pool = new pg.Pool({
-    connectionString: DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-  });
+  const pool = new pg.Pool(getConnectionConfig());
   try {
     const result = await pool.query(sql, params);
     return { rows: result.rows };
@@ -107,10 +111,7 @@ export async function createSubmission(data: {
   }[];
 }): Promise<SubmissionRow> {
   const { default: pg } = await import("pg");
-  const pool = new pg.Pool({
-    connectionString: DATABASE_URL,
-    ssl: { rejectUnauthorized: false },
-  });
+  const pool = new pg.Pool(getConnectionConfig());
   const client = await pool.connect();
 
   try {
