@@ -106,12 +106,16 @@ export async function GET(request: Request) {
       stock: item.stock,
       // CTCG trade-in bid (store credit — always willing to buy)
       tradein_credit: tradeinCredit,
-      // P2P
-      best_bid: p2p?.best_bid ? parseFloat(p2p.best_bid) : null,
+      // Bids (P2P + CTCG credit bid)
+      best_bid: (() => {
+        const p2pBid = p2p?.best_bid ? parseFloat(p2p.best_bid) : null;
+        if (p2pBid && tradeinCredit) return Math.max(p2pBid, tradeinCredit);
+        return p2pBid || tradeinCredit;
+      })(),
       best_ask: bestAsk,
       p2p_sellers: p2p?.ask_count || 0,
-      p2p_buyers: p2p?.bid_count || 0,
-      has_p2p: (p2p?.bid_count || 0) > 0 || (p2p?.ask_count || 0) > 0,
+      p2p_buyers: (p2p?.bid_count || 0) + (tradeinCredit ? 1 : 0), // +1 for CTCG
+      has_p2p: (p2p?.bid_count || 0) > 0 || (p2p?.ask_count || 0) > 0 || !!tradeinCredit,
     };
   });
 
