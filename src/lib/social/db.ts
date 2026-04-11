@@ -291,7 +291,8 @@ export async function findTradeMatches(userId: string): Promise<TradeMatch[]> {
   ) : { rows: [] };
 
   // Merge matches
-  const matchMap = new Map<string, { yours: typeof wanters.rows; theirs: typeof havers.rows }>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const matchMap = new Map<string, { yours: any[]; theirs: any[] }>();
 
   for (const w of wanters.rows) {
     if (!matchMap.has(w.user_id)) matchMap.set(w.user_id, { yours: [], theirs: [] });
@@ -310,11 +311,13 @@ export async function findTradeMatches(userId: string): Promise<TradeMatch[]> {
     `SELECT id, username, name, avatar_url, trust_score FROM users WHERE id=ANY($1)`,
     [matchUserIds]
   );
-  const userMap = new Map(users.rows.map((u: { id: string }) => [u.id, u]));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const userMap = new Map(users.rows.map((u: any) => [u.id, u]));
 
   return matchUserIds
     .map(uid => {
-      const user = userMap.get(uid);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const user = userMap.get(uid) as any;
       const match = matchMap.get(uid)!;
       if (!user) return null;
       return {
