@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { formatPrice } from "@/lib/format";
+import { useToast } from "@/components/ui/Toast";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -109,9 +110,45 @@ export default function MarketPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [setsLoading, setSetsLoading] = useState(true);
+  const [sellingSku, setSellingSku] = useState<string | null>(null);
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const limit = 48;
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { toast } = useToast();
+
+  /* ---- check auth ---- */
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then((r) => r.json())
+      .then((data) => setLoggedIn(!!data?.user?.email))
+      .catch(() => setLoggedIn(false));
+  }, []);
+
+  /* ---- sell for credit handler ---- */
+  async function handleSellForCredit(sku: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    if (loggedIn === false) {
+      window.location.href = "/login";
+      return;
+    }
+    setSellingSku(sku);
+    try {
+      const res = await fetch("/api/market/sell-for-credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sku, quantity: 1 }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to sell");
+      toast(`${formatPrice(data.totalCredit)} credit added! Ship your card within 7 days.`, "success");
+    } catch (err: any) {
+      toast(err.message || "Failed to sell for credit", "error");
+    } finally {
+      setSellingSku(null);
+    }
+  }
 
   /* ---- debounced search ---- */
   useEffect(() => {
@@ -194,6 +231,22 @@ export default function MarketPage() {
           <p className="text-neutral-400">
             Buy and sell One Piece TCG cards. Every card has a market page.
           </p>
+        </div>
+
+        {/* ========== HERO BANNER — We Buy Every Card ========== */}
+        <div className="mb-8 rounded-xl p-[1px] bg-gradient-to-r from-purple-500 to-blue-500">
+          <div className="bg-purple-500/5 backdrop-blur rounded-[11px] px-6 py-5">
+            <h2 className="text-lg font-bold text-white mb-1">
+              <span className="mr-2">&#128176;</span>We Buy Every Card &mdash; Unlimited &mdash; Instant Store Credit
+            </h2>
+            <p className="text-sm text-neutral-300 leading-relaxed max-w-2xl">
+              Sell any card to Cambridge TCG for store credit. No waiting for a buyer. No listing fees.
+              Guaranteed price on every card. Credit is added to your account instantly.
+            </p>
+            <p className="text-xs text-neutral-400 mt-2">
+              Store credit can be used to buy any card in our shop.
+            </p>
+          </div>
         </div>
 
         {/* ========== STATS BAR ========== */}
@@ -377,7 +430,7 @@ export default function MarketPage() {
                       <th className="px-3 py-2.5 text-left">Rarity</th>
                       <th className="px-3 py-2.5 text-left">Set</th>
                       <th className="px-3 py-2.5 text-right">CTCG Price</th>
-                      <th className="px-3 py-2.5 text-right">CTCG Bid</th>
+                      <th className="px-3 py-2.5 text-right text-purple-400">We Buy</th>
                       <th className="px-3 py-2.5 text-right">Market</th>
                       <th className="px-3 py-2.5 text-center">P2P Sellers</th>
                       <th className="px-3 py-2.5 text-center">P2P Buyers</th>
@@ -435,7 +488,7 @@ export default function MarketPage() {
                       <th className="px-3 py-2.5 text-left">Rarity</th>
                       <th className="px-3 py-2.5 text-left">Set</th>
                       <th className="px-3 py-2.5 text-right">CTCG Price</th>
-                      <th className="px-3 py-2.5 text-right">CTCG Bid</th>
+                      <th className="px-3 py-2.5 text-right text-purple-400">We Buy</th>
                       <th className="px-3 py-2.5 text-right">Market</th>
                       <th className="px-3 py-2.5 text-center">P2P Sellers</th>
                       <th className="px-3 py-2.5 text-center">P2P Buyers</th>
@@ -492,14 +545,20 @@ export default function MarketPage() {
                             {formatPrice(card.spot_price)}
                           </td>
 
-                          {/* CTCG Bid (trade-in credit) */}
+                          {/* We Buy (store credit) */}
                           <td className="px-3 py-2 text-right whitespace-nowrap">
                             {card.tradein_credit != null && card.tradein_credit > 0 ? (
-                              <span className="text-purple-400 font-semibold" title="Store Credit — can only be used at Cambridge TCG">
-                                {formatPrice(card.tradein_credit)}
-                                <span className="ml-1 text-[10px] bg-purple-500/20 text-purple-400 px-1 py-0.5 rounded font-semibold">
-                                  credit
+                              <span className="inline-flex items-center gap-1.5" title="Instant store credit — we buy unlimited quantity">
+                                <span className="text-purple-400 font-bold">
+                                  {formatPrice(card.tradein_credit)}
                                 </span>
+                                <button
+                                  onClick={(e) => handleSellForCredit(card.sku, e)}
+                                  disabled={sellingSku === card.sku}
+                                  className="px-2 py-0.5 text-[10px] font-bold bg-purple-600 text-white rounded hover:bg-purple-500 transition disabled:opacity-50"
+                                >
+                                  {sellingSku === card.sku ? "..." : "Sell"}
+                                </button>
                               </span>
                             ) : (
                               <span className="text-neutral-600 text-xs">&mdash;</span>
@@ -602,11 +661,20 @@ export default function MarketPage() {
                         {formatPrice(card.spot_price)}
                       </p>
 
-                      {/* CTCG trade-in credit */}
+                      {/* We buy — store credit */}
                       {card.tradein_credit != null && card.tradein_credit > 0 && (
-                        <p className="text-[11px] text-purple-400 mt-0.5" title="Store Credit — can only be used at Cambridge TCG">
-                          We buy: {formatPrice(card.tradein_credit)} credit
-                        </p>
+                        <div className="flex items-center gap-1.5 mt-1" title="Instant store credit — we buy unlimited quantity">
+                          <span className="text-[11px] text-purple-400 font-semibold">
+                            We buy: {formatPrice(card.tradein_credit)}
+                          </span>
+                          <button
+                            onClick={(e) => handleSellForCredit(card.sku, e)}
+                            disabled={sellingSku === card.sku}
+                            className="text-[10px] font-bold text-purple-300 hover:text-purple-200 underline transition disabled:opacity-50"
+                          >
+                            {sellingSku === card.sku ? "..." : "Sell"}
+                          </button>
+                        </div>
                       )}
 
                       {/* P2P indicator */}

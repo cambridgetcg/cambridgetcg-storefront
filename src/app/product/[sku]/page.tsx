@@ -8,6 +8,7 @@ import Link from "next/link";
 import AddToCart from "@/components/cart/AddToCart";
 import NotifyMe from "@/components/product/NotifyMe";
 import AddToPortfolio from "@/components/product/AddToPortfolio";
+import SellForCreditButton from "@/components/product/SellForCreditButton";
 import CardGrid from "@/components/catalog/CardGrid";
 
 function rarityBadgeClasses(rarity: string | null): string | null {
@@ -180,16 +181,18 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
                   <h3 className="text-sm font-semibold text-neutral-300 uppercase tracking-wider">Market</h3>
                   <div className="flex items-start gap-2">
                     <span className="shrink-0 mt-0.5 px-2 py-0.5 text-xs font-bold rounded-full bg-purple-500/20 text-purple-400">
-                      CTCG Bid
+                      We Buy
                     </span>
                     <div className="text-sm text-neutral-300">
-                      CTCG buys this card for{" "}
+                      We buy this card for{" "}
                       <span className="text-purple-400 font-semibold">{formatPrice(market.tradein_credit!)}</span>{" "}
                       <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1 py-0.5 rounded font-semibold">store credit</span>
+                      <span className="text-xs text-neutral-500 ml-1">&mdash; always available, unlimited</span>
                     </div>
                   </div>
+                  <SellForCreditButton sku={sku} creditAmount={market.tradein_credit!} />
                   <p className="text-[11px] text-neutral-500">
-                    Store credit can only be used at Cambridge TCG. Instant credit to your account.
+                    Instant store credit. Can only be used at Cambridge TCG.
                   </p>
                   <Link
                     href={`/market/${sku}`}
@@ -269,16 +272,20 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
                   </div>
                 )}
 
-                {/* CTCG trade-in credit */}
+                {/* We buy — instant store credit */}
                 {hasTradeinCredit && (
                   <div className="flex items-start gap-2">
                     <span className="shrink-0 mt-0.5 px-2 py-0.5 text-xs font-bold rounded-full bg-purple-500/20 text-purple-400">
-                      CTCG Bid
+                      We Buy
                     </span>
-                    <div className="text-sm text-neutral-300">
-                      CTCG buys this card for{" "}
-                      <span className="text-purple-400 font-semibold">{formatPrice(market.tradein_credit!)}</span>{" "}
-                      <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1 py-0.5 rounded font-semibold">store credit</span>
+                    <div className="text-sm text-neutral-300 flex flex-col gap-1.5">
+                      <span>
+                        We buy this card for{" "}
+                        <span className="text-purple-400 font-semibold">{formatPrice(market.tradein_credit!)}</span>{" "}
+                        <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1 py-0.5 rounded font-semibold">store credit</span>
+                        <span className="text-xs text-neutral-500 ml-1">&mdash; always available, unlimited</span>
+                      </span>
+                      <SellForCreditButton sku={sku} creditAmount={market.tradein_credit!} />
                     </div>
                   </div>
                 )}

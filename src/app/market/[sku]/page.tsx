@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/format";
+import { useToast } from "@/components/ui/Toast";
 import type { OrderBookEntry, MarketTrade } from "@/lib/market/types";
 import type { UnifiedMarketView } from "@/lib/market/unified";
 import type { EscrowTier } from "@/lib/escrow/service-tiers";
@@ -87,7 +88,7 @@ function BidAskRow({
               <span className={`${bidTextColor} font-medium flex items-center gap-1`}>
                 {isBidHouse && <span title="CTCG Store Credit">&#127978;</span>}
                 {formatPrice(Number(bid.price))}
-                {isBidHouse && <span className="text-[10px] text-purple-400/80 font-sans font-semibold">CTCG</span>}
+                {isBidHouse && <span className="text-[10px] text-purple-400/80 font-sans font-semibold">CTCG &mdash; We Buy (unlimited)</span>}
                 {isBidHouse && <span className="text-[9px] bg-purple-500/20 text-purple-400 px-1 py-px rounded font-sans">credit</span>}
               </span>
             </span>
@@ -344,6 +345,12 @@ export default function CardMarketPage() {
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
+  // Sell-for-credit state
+  const [creditQty, setCreditQty] = useState(1);
+  const [creditSelling, setCreditSelling] = useState(false);
+  const [creditResult, setCreditResult] = useState<{ reference: string; totalCredit: number } | null>(null);
+  const { toast } = useToast();
+
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
   const fetchBook = useCallback(async () => {
@@ -411,6 +418,27 @@ export default function CardMarketPage() {
       setResult({ success: false, message: err.message });
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSellForCredit() {
+    setCreditSelling(true);
+    setCreditResult(null);
+    try {
+      const res = await fetch("/api/market/sell-for-credit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sku, quantity: creditQty }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to sell for credit");
+      setCreditResult({ reference: data.reference, totalCredit: data.totalCredit });
+      toast(`${formatPrice(data.totalCredit)} credit added to your account!`, "success");
+      fetchBook();
+    } catch (err: any) {
+      toast(err.message || "Failed to sell for credit", "error");
+    } finally {
+      setCreditSelling(false);
     }
   }
 
@@ -518,8 +546,116 @@ export default function CardMarketPage() {
             )}
           </div>
 
-          {/* Right: Order form */}
-          <div className="bg-neutral-900 rounded-xl p-4">
+          {/* Right: Order form + Sell for Credit */}
+          <div className="space-y-4">
+            {/* ========== CAMBRIDGE TCG BUYS THIS CARD ========== */}
+            {book.tradein_credit != null && book.tradein_credit > 0 && (
+              <div className="rounded-xl p-[1px] bg-gradient-to-r from-purple-500 to-blue-500">
+                <div className="bg-neutral-950 rounded-[11px] p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-lg">&#127978;</span>
+                    <h3 className="text-sm font-black text-white uppercase tracking-wide">Cambridge TCG Buys This Card</h3>
+                  </div>
+
+                  <div className="flex gap-4 items-start">
+                    {/* Left: price + quantity + button */}
+                    <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-4 min-w-[180px]">
+                      <p className="text-2xl font-bold text-purple-400 mb-0.5">
+                        {formatPrice(book.tradein_credit)}
+                        <span className="text-sm ml-1.5 bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-semibold">
+                          Store Credit
+                        </span>
+                      </p>
+
+                      {!creditResult && (
+                        <>
+                          {/* Quantity selector */}
+                          <div className="flex items-center gap-2 mt-3 mb-3">
+                            <span className="text-xs text-neutral-400">Qty:</span>
+                            <button
+                              onClick={() => setCreditQty(Math.max(1, creditQty - 1))}
+                              className="w-6 h-6 flex items-center justify-center bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700 transition text-xs font-bold"
+                            >
+                              -
+                            </button>
+                            <span className="text-sm font-mono text-white w-8 text-center">{creditQty}</span>
+                            <button
+                              onClick={() => setCreditQty(Math.min(99, creditQty + 1))}
+                              className="w-6 h-6 flex items-center justify-center bg-neutral-800 text-neutral-300 rounded hover:bg-neutral-700 transition text-xs font-bold"
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          {loggedIn === false ? (
+                            <Link
+                              href="/login"
+                              className="block w-full text-center py-2.5 rounded-lg font-bold text-sm bg-purple-600 text-white hover:bg-purple-500 transition"
+                            >
+                              Sign in to sell
+                            </Link>
+                          ) : (
+                            <button
+                              onClick={handleSellForCredit}
+                              disabled={creditSelling || loggedIn === null}
+                              className="w-full py-2.5 rounded-lg font-bold text-sm bg-purple-600 text-white hover:bg-purple-500 transition disabled:opacity-50"
+                            >
+                              {creditSelling
+                                ? "Processing..."
+                                : `Sell for ${formatPrice(book.tradein_credit * creditQty)} Credit`}
+                            </button>
+                          )}
+                        </>
+                      )}
+
+                      {/* Success state */}
+                      {creditResult && (
+                        <div className="mt-3 space-y-2">
+                          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
+                            <p className="text-sm font-semibold text-emerald-400">
+                              {formatPrice(creditResult.totalCredit)} credit added to your account!
+                            </p>
+                            <p className="text-xs text-neutral-400 mt-1">
+                              Reference: {creditResult.reference}
+                            </p>
+                          </div>
+                          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3">
+                            <p className="text-xs font-semibold text-white mb-1">Shipping instructions</p>
+                            <p className="text-[11px] text-neutral-400 leading-relaxed">
+                              Ship your card(s) within 7 days to Cambridge TCG.
+                              Include your reference number ({creditResult.reference}) with the package.
+                              We will confirm receipt and your credit is already available.
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => { setCreditResult(null); setCreditQty(1); }}
+                            className="text-xs text-purple-400 hover:text-purple-300 transition"
+                          >
+                            Sell more
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right: messaging */}
+                    <div className="flex-1 space-y-1.5 pt-1">
+                      <p className="text-sm text-neutral-300">Always available. Unlimited quantity.</p>
+                      <p className="text-sm text-neutral-300">No waiting for a buyer.</p>
+                      <p className="text-sm text-neutral-300">Credit added instantly.</p>
+                      <p className="text-sm text-neutral-300">Ship within 7 days.</p>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-neutral-500 mt-4 leading-relaxed">
+                    Store credit can only be used at Cambridge TCG.
+                    This is our standing bid &mdash; always available, unlimited quantity.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ========== P2P Order Form ========== */}
+            <div className="bg-neutral-900 rounded-xl p-4">
             <div className="flex mb-4 bg-neutral-800 rounded-lg p-1">
               <button
                 onClick={() => { setTab("buy"); setResult(null); }}
@@ -660,31 +796,7 @@ export default function CardMarketPage() {
               <EscrowRoutingPreview orderValue={parseFloat(price) * parseInt(quantity, 10) || 0} />
             )}
 
-            {/* Sell to CTCG section */}
-            {book.tradein_credit != null && book.tradein_credit > 0 && (
-              <div className="mt-4 bg-purple-500/5 border border-purple-500/20 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-lg">&#127978;</span>
-                  <h3 className="text-sm font-bold text-white">Sell to Cambridge TCG</h3>
-                </div>
-                <p className="text-xs text-neutral-400 mb-2">We&apos;ll buy this card for:</p>
-                <p className="text-xl font-bold text-purple-400 mb-1">
-                  {formatPrice(book.tradein_credit)}{" "}
-                  <span className="text-sm bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-semibold">
-                    Store Credit
-                  </span>
-                </p>
-                <p className="text-[11px] text-neutral-500 mt-2 mb-4 leading-relaxed">
-                  Store credit can only be used to buy from our store. Instant credit to your account.
-                </p>
-                <Link
-                  href="/trade-in"
-                  className="block w-full text-center py-2.5 rounded-lg font-bold text-sm bg-purple-600 text-white hover:bg-purple-500 transition"
-                >
-                  Sell for Store Credit
-                </Link>
-              </div>
-            )}
+          </div>
           </div>
         </div>
 
