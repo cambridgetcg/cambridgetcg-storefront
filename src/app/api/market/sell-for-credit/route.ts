@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { fetchCard } from "@/lib/wholesale/client";
+import { fetchCard, fetchPrices } from "@/lib/wholesale/client";
 import { addCredit } from "@/lib/membership/db";
 import { query } from "@/lib/db";
 import { postActivity } from "@/lib/social/db";
@@ -21,14 +21,36 @@ export async function POST(request: Request) {
   if (qty < 1 || qty > 99) return NextResponse.json({ error: "Quantity 1-99." }, { status: 400 });
 
   // Get the trade-in credit price (CTCG's standing bid)
-  const card = await fetchCard(sku, "tradein-credit").catch(() => null);
-  if (!card || !card.channel_price || card.channel_price <= 0) {
+  // Try individual lookup first, fall back to batch (individual may not support tradein channel)
+  const skuParts = sku.split("-");
+  const setCode = skuParts.length >= 2 ? skuParts[1] : undefined;
+
+  let creditPerCard = 0;
+  let cardName = sku;
+
+  const directCard = await fetchCard(sku, "tradein-credit").catch(() => null);
+  if (directCard?.channel_price && directCard.channel_price > 0) {
+    creditPerCard = directCard.channel_price;
+    cardName = directCard.name_en || directCard.name || directCard.card_number;
+  } else if (setCode) {
+    const batchRes = await fetchPrices({ game: "one-piece", set: setCode, channel: "tradein-credit", limit: 500 }).catch(() => ({ items: [] }));
+    const match = batchRes.items.find((i: { sku: string }) => i.sku === sku);
+    if (match?.channel_price && match.channel_price > 0) {
+      creditPerCard = match.channel_price;
+      cardName = match.name_en || match.name || match.card_number;
+    }
+  }
+
+  if (cardName === sku) {
+    const mainCard = await fetchCard(sku).catch(() => null);
+    if (mainCard) cardName = mainCard.name_en || mainCard.name || mainCard.card_number;
+  }
+
+  if (creditPerCard <= 0) {
     return NextResponse.json({ error: "This card is not currently on our buy list." }, { status: 400 });
   }
 
-  const creditPerCard = card.channel_price;
   const totalCredit = creditPerCard * qty;
-  const cardName = card.name_en || card.name || card.card_number;
 
   // Create a trade-in submission record for tracking
   const today = new Date();
@@ -61,7 +83,7 @@ export async function POST(request: Request) {
   await query(
     `INSERT INTO tradein_items (submission_id, sku, card_number, name, set_code, quantity, quoted_cash_price, quoted_credit_price)
      VALUES ($1, $2, $3, $4, $5, $6, '0', $7)`,
-    [submissionId, sku, card.card_number, cardName, card.set_code, qty, creditPerCard.toFixed(2)]
+    [submissionId, sku, skuParts.slice(1, 3).join("-"), cardName, setCode || null, qty, creditPerCard.toFixed(2)]
   );
 
   // Issue credit immediately (pre-authorized — will be clawed back if card not received)

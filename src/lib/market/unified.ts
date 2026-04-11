@@ -7,7 +7,7 @@
 // Store credit is the absorption mechanism — it can only be spent at CTCG,
 // creating a flywheel: sell cards → get credit → buy cards → sell cards
 
-import { fetchCard } from "@/lib/wholesale/client";
+import { fetchCard, fetchPrices } from "@/lib/wholesale/client";
 import { retailPrice } from "@/lib/pricing";
 import { getCardOrderBook } from "./db";
 import type { CardOrderBook, OrderBookEntry } from "./types";
@@ -50,15 +50,24 @@ export interface UnifiedMarketView {
 }
 
 export async function getUnifiedMarketView(sku: string): Promise<UnifiedMarketView> {
-  const [card, orderBook, tradeinCreditCard, tradeinCashCard] = await Promise.all([
+  // Derive set_code from SKU (e.g. "OP-OP01-025-JP-V11D5" → "OP01", "EB-EB01-006-JP-VZSK" → "EB01")
+  const skuParts = sku.split("-");
+  const setCode = skuParts.length >= 2 ? skuParts[1] : undefined;
+
+  const [card, orderBook, tradeinCreditRes, tradeinCashRes] = await Promise.all([
     fetchCard(sku).catch(() => null),
     getCardOrderBook(sku),
-    fetchCard(sku, "tradein-credit").catch(() => null),
-    fetchCard(sku, "tradein-cash").catch(() => null),
+    // Use batch fetchPrices instead of fetchCard for trade-in channels
+    // (individual SKU lookup may not support trade-in channels)
+    setCode ? fetchPrices({ game: "one-piece", set: setCode, channel: "tradein-credit", limit: 500 }).catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
+    setCode ? fetchPrices({ game: "one-piece", set: setCode, channel: "tradein-cash", limit: 500 }).catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
   ]);
 
-  const tradeinCredit = tradeinCreditCard?.channel_price ?? null;
-  const tradeinCash = tradeinCashCard?.channel_price ?? null;
+  // Find this specific SKU in the trade-in results
+  const tradeinCreditItem = tradeinCreditRes.items.find(i => i.sku === sku);
+  const tradeinCashItem = tradeinCashRes.items.find(i => i.sku === sku);
+  const tradeinCredit = tradeinCreditItem?.channel_price ?? null;
+  const tradeinCash = tradeinCashItem?.channel_price ?? null;
   const spotPrice = card ? retailPrice(card.price_gbp, card.channel_price) : null;
   const spotStock = card?.stock ?? 0;
 
