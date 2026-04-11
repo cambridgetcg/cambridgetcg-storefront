@@ -3,11 +3,11 @@ import Stripe from "stripe";
 import { reportSale } from "@/lib/wholesale/client";
 import { query } from "@/lib/db";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!.trim(), {
   apiVersion: "2026-02-25.clover",
 });
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!.trim();
 
 export async function POST(request: Request) {
   const body = await request.text();
