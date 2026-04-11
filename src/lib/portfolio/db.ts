@@ -122,6 +122,13 @@ export async function valuatePortfolio(userId: string): Promise<{
       ]);
 
       const spotPrice = wholesale ? retailPrice(wholesale.price_gbp, wholesale.channel_price) : null;
+
+      // Backfill image_url from wholesale if missing
+      if (!card.image_url && wholesale?.image_url) {
+        query(`UPDATE portfolio_cards SET image_url=$1 WHERE id=$2`, [wholesale.image_url, card.id]).catch(() => {});
+        card.image_url = wholesale.image_url;
+      }
+
       const bestBid = orderBook.best_bid ? parseFloat(orderBook.best_bid) : null;
       const bestAsk = orderBook.best_ask ? parseFloat(orderBook.best_ask) : null;
       const tradeinCredit = creditCard?.channel_price ?? null;
