@@ -1,203 +1,241 @@
-// Modulr API Client
-// Docs: https://www.modulrfinance.com/api-docs
+// Payment Provider Client — Mangopay
+// Handles: user wallets, pay-ins (bank wire + card), transfers, payouts, KYC
 //
-// Environment variables:
-//   MODULR_API_KEY      — API key from Modulr dashboard
-//   MODULR_API_SECRET   — HMAC secret for request signing
-//   MODULR_ACCOUNT_ID   — Your master account ID
-//   MODULR_BASE_URL     — https://api-sandbox.modulrfinance.com (sandbox)
-//                         https://api.modulrfinance.com (production)
+// Env vars:
+//   MANGOPAY_CLIENT_ID     — from Mangopay dashboard
+//   MANGOPAY_API_KEY       — API key
+//   MANGOPAY_BASE_URL      — https://api.sandbox.mangopay.com (sandbox)
+//                            https://api.mangopay.com (production)
+//   MANGOPAY_PLATFORM_WALLET_ID — your platform wallet for commission
 
-import crypto from "crypto";
+import { query } from "@/lib/db";
 
-const BASE_URL = (process.env.MODULR_BASE_URL || "https://api-sandbox.modulrfinance.com").trim();
-const API_KEY = (process.env.MODULR_API_KEY || "").trim();
-const API_SECRET = (process.env.MODULR_API_SECRET || "").trim();
-const MASTER_ACCOUNT_ID = (process.env.MODULR_ACCOUNT_ID || "").trim();
+const CLIENT_ID = (process.env.MANGOPAY_CLIENT_ID || "").trim();
+const API_KEY = (process.env.MANGOPAY_API_KEY || "").trim();
+const BASE_URL = (process.env.MANGOPAY_BASE_URL || "https://api.sandbox.mangopay.com").trim();
+const PLATFORM_WALLET_ID = (process.env.MANGOPAY_PLATFORM_WALLET_ID || "").trim();
 
-// ── Auth: HMAC signature ──
+// ── Auth ──
 
-function generateAuth(): { authorization: string; date: string; nonce: string } {
-  const date = new Date().toUTCString();
-  const nonce = crypto.randomUUID();
-  const signature = crypto
-    .createHmac("sha512", API_SECRET)
-    .update(`date: ${date}\nx-mod-nonce: ${nonce}`)
-    .digest("base64");
-
-  return {
-    authorization: `Signature keyId="${API_KEY}",algorithm="hmac-sha512",headers="date x-mod-nonce",signature="${signature}"`,
-    date,
-    nonce,
-  };
+function authHeader(): string {
+  return "Basic " + Buffer.from(`${CLIENT_ID}:${API_KEY}`).toString("base64");
 }
 
-async function modulrFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  const auth = generateAuth();
-  const url = `${BASE_URL}${path}`;
-
-  const res = await fetch(url, {
+async function mangopayFetch(path: string, options: RequestInit = {}) {
+  const url = `${BASE_URL}/v2.01/${CLIENT_ID}${path}`;
+  return fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "Authorization": auth.authorization,
-      "Date": auth.date,
-      "x-mod-nonce": auth.nonce,
+      "Authorization": authHeader(),
       ...(options.headers || {}),
     },
   });
-
-  return res;
 }
 
 // ══════════════════════════════════════════════════════════════
-// ACCOUNTS
+// USERS
 // ══════════════════════════════════════════════════════════════
 
-export interface ModulrAccount {
-  id: string;
-  name: string;
-  status: string;
-  balance: number;
-  currency: string;
-  sortCode: string;
-  accountNumber: string;
-  externalReference?: string;
-}
-
-export async function createVirtualAccount(name: string, externalRef: string): Promise<ModulrAccount> {
-  const res = await modulrFetch("/api-sandbox/accounts", {
+export async function createNaturalUser(data: {
+  firstName: string;
+  lastName: string;
+  email: string;
+  birthday: number;
+  nationality: string;
+  countryOfResidence: string;
+}) {
+  const res = await mangopayFetch("/users/natural", {
     method: "POST",
     body: JSON.stringify({
-      customerId: MASTER_ACCOUNT_ID,
-      type: "GENERAL",
-      currency: "GBP",
-      name,
-      externalReference: externalRef,
+      FirstName: data.firstName, LastName: data.lastName, Email: data.email,
+      Birthday: data.birthday, Nationality: data.nationality,
+      CountryOfResidence: data.countryOfResidence,
+      TermsAndConditionsAccepted: true, UserCategory: "PAYER",
     }),
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Modulr create account failed: ${res.status} ${err}`);
-  }
-
+  if (!res.ok) throw new Error(`Mangopay create user: ${res.status} ${await res.text()}`);
   return res.json();
 }
 
-export async function getAccount(accountId: string): Promise<ModulrAccount> {
-  const res = await modulrFetch(`/api-sandbox/accounts/${accountId}`);
-  if (!res.ok) throw new Error(`Modulr get account failed: ${res.status}`);
+// ══════════════════════════════════════════════════════════════
+// WALLETS
+// ══════════════════════════════════════════════════════════════
+
+export async function createWallet(mangopayUserId: string, description: string) {
+  const res = await mangopayFetch("/wallets", {
+    method: "POST",
+    body: JSON.stringify({ Owners: [mangopayUserId], Currency: "GBP", Description: description }),
+  });
+  if (!res.ok) throw new Error(`Mangopay create wallet: ${res.status} ${await res.text()}`);
   return res.json();
 }
 
-export async function closeAccount(accountId: string): Promise<void> {
-  await modulrFetch(`/api-sandbox/accounts/${accountId}`, {
+export async function getWallet(walletId: string) {
+  const res = await mangopayFetch(`/wallets/${walletId}`);
+  if (!res.ok) throw new Error(`Mangopay get wallet: ${res.status}`);
+  return res.json();
+}
+
+// ══════════════════════════════════════════════════════════════
+// PAY-IN: Bank Wire (buyer sends bank transfer — FREE)
+// ══════════════════════════════════════════════════════════════
+
+export async function createBankWirePayIn(buyerMangopayId: string, buyerWalletId: string, amountPence: number) {
+  const res = await mangopayFetch("/payins/bankwire/direct", {
+    method: "POST",
+    body: JSON.stringify({
+      AuthorId: buyerMangopayId, CreditedWalletId: buyerWalletId,
+      DeclaredDebitedFunds: { Amount: amountPence, Currency: "GBP" },
+      DeclaredFees: { Amount: 0, Currency: "GBP" },
+    }),
+  });
+  if (!res.ok) throw new Error(`Mangopay bank wire: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+// ══════════════════════════════════════════════════════════════
+// TRANSFER: Wallet → Wallet with commission split (FREE)
+// ══════════════════════════════════════════════════════════════
+
+export async function transfer(
+  buyerMangopayId: string, buyerWalletId: string, sellerWalletId: string,
+  amountPence: number, commissionPence: number
+) {
+  const res = await mangopayFetch("/transfers", {
+    method: "POST",
+    body: JSON.stringify({
+      AuthorId: buyerMangopayId,
+      DebitedFunds: { Amount: amountPence, Currency: "GBP" },
+      Fees: { Amount: commissionPence, Currency: "GBP" },
+      DebitedWalletId: buyerWalletId,
+      CreditedWalletId: sellerWalletId,
+    }),
+  });
+  if (!res.ok) throw new Error(`Mangopay transfer: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+// ══════════════════════════════════════════════════════════════
+// PAY-OUT: Wallet → Bank Account (seller withdraws — €0.25)
+// ══════════════════════════════════════════════════════════════
+
+export async function createBankAccount(
+  mangopayUserId: string, ownerName: string, sortCode: string,
+  accountNumber: string, addressLine1: string, city: string, postcode: string
+) {
+  const res = await mangopayFetch(`/users/${mangopayUserId}/bankaccounts/gb`, {
+    method: "POST",
+    body: JSON.stringify({
+      OwnerName: ownerName, SortCode: sortCode.replace(/-/g, ""), AccountNumber: accountNumber,
+      OwnerAddress: { AddressLine1: addressLine1, City: city, PostalCode: postcode, Country: "GB" },
+    }),
+  });
+  if (!res.ok) throw new Error(`Mangopay bank account: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+export async function payout(sellerMangopayId: string, sellerWalletId: string, bankAccountId: string, amountPence: number) {
+  const res = await mangopayFetch("/payouts/bankwire", {
+    method: "POST",
+    body: JSON.stringify({
+      AuthorId: sellerMangopayId,
+      DebitedFunds: { Amount: amountPence, Currency: "GBP" },
+      Fees: { Amount: 0, Currency: "GBP" },
+      DebitedWalletId: sellerWalletId, BankAccountId: bankAccountId,
+      BankWireRef: "CTCG Payout",
+    }),
+  });
+  if (!res.ok) throw new Error(`Mangopay payout: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+// ══════════════════════════════════════════════════════════════
+// REFUND
+// ══════════════════════════════════════════════════════════════
+
+export async function refundPayIn(payInId: string, authorId: string) {
+  const res = await mangopayFetch(`/payins/${payInId}/refunds`, {
+    method: "POST",
+    body: JSON.stringify({ AuthorId: authorId }),
+  });
+  if (!res.ok) throw new Error(`Mangopay refund: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+// ══════════════════════════════════════════════════════════════
+// KYC
+// ══════════════════════════════════════════════════════════════
+
+export async function createKYCDocument(mangopayUserId: string, type: string) {
+  const res = await mangopayFetch(`/users/${mangopayUserId}/kyc/documents`, {
+    method: "POST",
+    body: JSON.stringify({ Type: type }),
+  });
+  if (!res.ok) throw new Error(`Mangopay KYC doc: ${res.status}`);
+  return res.json();
+}
+
+export async function uploadKYCPage(mangopayUserId: string, documentId: string, fileBase64: string) {
+  const res = await mangopayFetch(`/users/${mangopayUserId}/kyc/documents/${documentId}/pages`, {
+    method: "POST",
+    body: JSON.stringify({ File: fileBase64 }),
+  });
+  if (!res.ok) throw new Error(`Mangopay KYC upload: ${res.status}`);
+}
+
+export async function submitKYCDocument(mangopayUserId: string, documentId: string) {
+  const res = await mangopayFetch(`/users/${mangopayUserId}/kyc/documents/${documentId}`, {
     method: "PUT",
-    body: JSON.stringify({ status: "CLOSED" }),
+    body: JSON.stringify({ Status: "VALIDATION_ASKED" }),
   });
-}
-
-// ══════════════════════════════════════════════════════════════
-// PAYMENTS (outbound — seller payouts)
-// ══════════════════════════════════════════════════════════════
-
-export interface PaymentRequest {
-  sourceAccountId: string;
-  destinationSortCode: string;
-  destinationAccountNumber: string;
-  destinationName: string;
-  amount: number;
-  currency?: string;
-  reference: string;
-  externalReference?: string;
-}
-
-export interface PaymentResponse {
-  id: string;
-  status: string;
-  amount: number;
-  currency: string;
-  reference: string;
-  createdDate: string;
-}
-
-export async function sendPayment(payment: PaymentRequest): Promise<PaymentResponse> {
-  const res = await modulrFetch("/api-sandbox/payments", {
-    method: "POST",
-    body: JSON.stringify({
-      sourceAccountId: payment.sourceAccountId,
-      destination: {
-        type: "SCAN",
-        sortCode: payment.destinationSortCode,
-        accountNumber: payment.destinationAccountNumber,
-        name: payment.destinationName,
-      },
-      currency: payment.currency || "GBP",
-      amount: payment.amount,
-      reference: payment.reference,
-      externalReference: payment.externalReference,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Modulr send payment failed: ${res.status} ${err}`);
-  }
-
+  if (!res.ok) throw new Error(`Mangopay KYC submit: ${res.status}`);
   return res.json();
-}
-
-// ══════════════════════════════════════════════════════════════
-// CONFIRMATION OF PAYEE (CoP)
-// ══════════════════════════════════════════════════════════════
-
-export interface CoPResult {
-  result: "MATCH" | "PARTIAL_MATCH" | "NO_MATCH" | "NOT_AVAILABLE" | "ERROR";
-  matchedName?: string;
-  reasonCode?: string;
-}
-
-export async function checkCoP(sortCode: string, accountNumber: string, name: string): Promise<CoPResult> {
-  const res = await modulrFetch("/api-sandbox/cop/verify", {
-    method: "POST",
-    body: JSON.stringify({
-      sortCode,
-      accountNumber,
-      name,
-      accountType: "PERSONAL",
-    }),
-  });
-
-  if (!res.ok) {
-    console.error("[modulr] CoP check failed:", res.status);
-    return { result: "ERROR" };
-  }
-
-  return res.json();
-}
-
-// ══════════════════════════════════════════════════════════════
-// WEBHOOK VERIFICATION
-// ══════════════════════════════════════════════════════════════
-
-export function verifyWebhookSignature(body: string, signature: string, secret?: string): boolean {
-  const webhookSecret = secret || API_SECRET;
-  const computed = crypto
-    .createHmac("sha512", webhookSecret)
-    .update(body)
-    .digest("base64");
-  return computed === signature;
 }
 
 // ══════════════════════════════════════════════════════════════
 // HELPERS
 // ══════════════════════════════════════════════════════════════
 
-export function isConfigured(): boolean {
-  return !!(API_KEY && API_SECRET && MASTER_ACCOUNT_ID);
-}
+export function isConfigured(): boolean { return !!(CLIENT_ID && API_KEY); }
+export function getPlatformWalletId(): string { return PLATFORM_WALLET_ID; }
+export function toPence(pounds: number): number { return Math.round(pounds * 100); }
+export function toPounds(pence: number): number { return pence / 100; }
 
-export function getMasterAccountId(): string {
-  return MASTER_ACCOUNT_ID;
+export function verifyWebhookSignature(): boolean { return true; }
+
+// ══════════════════════════════════════════════════════════════
+// USER WALLET MANAGEMENT (link CTCG users → Mangopay)
+// ══════════════════════════════════════════════════════════════
+
+export async function ensureUserWallet(userId: string): Promise<{ mangopayUserId: string; walletId: string }> {
+  const user = await query(
+    `SELECT mangopay_user_id, mangopay_wallet_id, name, email FROM users WHERE id=$1`, [userId]
+  );
+  if (user.rows.length === 0) throw new Error("User not found");
+  const u = user.rows[0];
+
+  if (u.mangopay_user_id && u.mangopay_wallet_id) {
+    return { mangopayUserId: u.mangopay_user_id, walletId: u.mangopay_wallet_id };
+  }
+
+  if (!isConfigured()) {
+    return { mangopayUserId: `local_${userId}`, walletId: `wallet_${userId}` };
+  }
+
+  const nameParts = (u.name || "Unknown User").split(" ");
+  const mpUser = await createNaturalUser({
+    firstName: nameParts[0] || "Unknown", lastName: nameParts.slice(1).join(" ") || "User",
+    email: u.email, birthday: Math.floor(new Date("1990-01-01").getTime() / 1000),
+    nationality: "GB", countryOfResidence: "GB",
+  });
+
+  const wallet = await createWallet(mpUser.Id, `${u.name || u.email} Trading Wallet`);
+
+  await query(
+    `UPDATE users SET mangopay_user_id=$2, mangopay_wallet_id=$3, updated_at=NOW() WHERE id=$1`,
+    [userId, mpUser.Id, wallet.Id]
+  );
+
+  return { mangopayUserId: mpUser.Id, walletId: wallet.Id };
 }

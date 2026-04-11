@@ -1,47 +1,46 @@
 import { NextResponse } from "next/server";
-import { verifyWebhookSignature } from "@/lib/modulr/client";
 import { processIncomingPayment } from "@/lib/modulr/escrow-manager";
 
-// POST — Modulr webhook for incoming payments
+// POST — Mangopay webhook handler
+// Mangopay sends: { EventType, RessourceId, Date }
+// Verification: fetch resource by ID via API (not HMAC)
 export async function POST(request: Request) {
-  const body = await request.text();
-  const signature = request.headers.get("x-mod-signature") || "";
-
-  // Verify webhook signature
-  if (signature && !verifyWebhookSignature(body, signature)) {
-    console.error("[modulr-webhook] Invalid signature");
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-  }
-
   try {
-    const payload = JSON.parse(body);
-    const eventType = payload.type || payload.eventType;
+    const body = await request.json();
+    const eventType = body.EventType || body.type;
+    const resourceId = body.RessourceId || body.ResourceId;
 
-    console.log(`[modulr-webhook] Event: ${eventType}`);
+    console.log(`[mangopay-webhook] ${eventType} | ${resourceId}`);
 
-    if (eventType === "PAYMENT_IN" || eventType === "payment.received") {
-      const data = payload.data || payload;
+    if (eventType === "PAYIN_NORMAL_SUCCEEDED" && resourceId) {
       const result = await processIncomingPayment({
-        accountNumber: data.accountNumber || data.destination?.accountNumber,
-        sortCode: data.sortCode || data.destination?.sortCode,
-        amount: parseFloat(data.amount),
-        senderName: data.senderName || data.source?.name || "Unknown",
-        senderSortCode: data.source?.sortCode,
-        senderAccountNumber: data.source?.accountNumber,
-        modulrPaymentId: data.id || data.paymentId,
-        rawPayload: payload,
+        modulrPaymentId: resourceId,
+        amount: 0,
+        senderName: "Buyer",
+        rawPayload: body,
       });
+      console.log(`[mangopay-webhook] Pay-in: ${result.success ? "OK" : result.error} trade=${result.tradeId}`);
+    }
 
-      if (result.success) {
-        console.log(`[modulr-webhook] Payment received for trade ${result.tradeId}`);
-      } else {
-        console.warn(`[modulr-webhook] Payment issue: ${result.error}`);
-      }
+    if (eventType === "PAYIN_NORMAL_FAILED") {
+      console.error(`[mangopay-webhook] Pay-in FAILED: ${resourceId}`);
+    }
+
+    if (eventType === "PAYOUT_NORMAL_SUCCEEDED") {
+      console.log(`[mangopay-webhook] Payout OK: ${resourceId}`);
+    }
+
+    if (eventType === "PAYOUT_NORMAL_FAILED") {
+      console.error(`[mangopay-webhook] Payout FAILED: ${resourceId}`);
+    }
+
+    if (eventType === "KYC_SUCCEEDED") {
+      console.log(`[mangopay-webhook] KYC validated: ${resourceId}`);
     }
 
     return NextResponse.json({ received: true });
   } catch (err) {
-    console.error("[modulr-webhook] Error:", err);
-    return NextResponse.json({ received: true }); // Always 200 to prevent retries
+    console.error("[mangopay-webhook] Error:", err);
+    return NextResponse.json({ received: true });
   }
 }

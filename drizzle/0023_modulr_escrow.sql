@@ -77,6 +77,8 @@ CREATE TABLE IF NOT EXISTS cop_checks (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_verified BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_cop_result VARCHAR(20);
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bank_verified_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mangopay_user_id VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mangopay_wallet_id VARCHAR(100);
 
 CREATE INDEX IF NOT EXISTS idx_escrow_accounts_trade ON escrow_accounts(trade_id);
 CREATE INDEX IF NOT EXISTS idx_escrow_accounts_status ON escrow_accounts(status);
