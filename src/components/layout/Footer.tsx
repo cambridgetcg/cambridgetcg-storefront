@@ -1,11 +1,15 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export default function Footer() {
   return (
     <footer className="bg-neutral-950 border-t border-neutral-800 py-12 px-4 mt-24">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between gap-8">
         <div>
-          <p className="text-xl font-black text-white">Cambridge <span className="text-emerald-400">TCG</span></p>
+          <div className="flex items-center gap-2 mb-2">
+            <Image src="/images/icon.png" alt="Cambridge TCG" width={28} height={28} className="w-7 h-7" />
+            <p className="text-xl font-black text-white">Cambridge <span className="text-emerald-400">TCG</span></p>
+          </div>
           <p className="text-sm text-neutral-400 mt-2 max-w-xs">Japanese trading card specialists. Authentic cards, sourced direct from Japan.</p>
         </div>
         <div className="flex gap-12 text-sm text-neutral-400">

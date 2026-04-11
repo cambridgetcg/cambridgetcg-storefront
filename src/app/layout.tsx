@@ -12,8 +12,25 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Cambridge TCG — Japanese Trading Cards",
-  description: "Premium Japanese One Piece, Pokémon and Dragon Ball TCG cards. Authentic, sourced direct from Japan.",
+  description: "Premium Japanese One Piece, Pokémon and Dragon Ball TCG cards. Buy, sell, trade, and collect. Authentic, sourced direct from Japan.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://cambridgetcg.com"),
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
+  openGraph: {
+    title: "Cambridge TCG — Japanese Trading Cards",
+    description: "Buy, sell, trade, and collect premium Japanese TCG cards. P2P marketplace, auctions, portfolio tracking, and community.",
+    images: [{ url: "/images/og-image.png", width: 1200, height: 630 }],
+    siteName: "Cambridge TCG",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Cambridge TCG — Japanese Trading Cards",
+    description: "Buy, sell, trade, and collect premium Japanese TCG cards.",
+    images: ["/images/twitter-image.png"],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

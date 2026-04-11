@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useCart } from "@/context/CartContext";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -37,8 +38,9 @@ export default function Nav() {
   return (
     <nav className="sticky top-0 z-40 bg-neutral-950/90 backdrop-blur border-b border-neutral-800">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-        <Link href="/" className="text-xl font-black text-white">
-          Cambridge <span className="text-emerald-400">TCG</span>
+        <Link href="/" className="flex items-center gap-2 shrink-0">
+          <Image src="/images/icon.png" alt="Cambridge TCG" width={32} height={32} className="w-8 h-8" />
+          <span className="text-xl font-black text-white hidden sm:inline">Cambridge <span className="text-emerald-400">TCG</span></span>
         </Link>
 
         {/* Desktop nav */}
