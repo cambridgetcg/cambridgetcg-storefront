@@ -10,6 +10,7 @@ const NAV_LINKS = [
   { href: "/catalog", label: "Catalog" },
   { href: "/auctions", label: "Auctions" },
   { href: "/market", label: "Market" },
+  { href: "/rewards", label: "Rewards" },
   { href: "/trade-in", label: "Trade In" },
   { href: "/about", label: "About" },
 ];
