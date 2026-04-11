@@ -1,20 +1,19 @@
 import NextAuth from "next-auth";
 import type { NextAuthConfig } from "next-auth";
+import EmailProvider from "next-auth/providers/email";
 import { PgAdapter } from "./adapter";
 import { sendVerificationRequest } from "./email";
 
 export const authConfig: NextAuthConfig = {
   adapter: PgAdapter(),
   providers: [
-    {
-      id: "email",
-      name: "Email",
-      type: "email",
-      maxAge: 24 * 60 * 60, // 24 hours
-      sendVerificationRequest,
+    EmailProvider({
+      // Dummy server — sendVerificationRequest is fully overridden so
+      // nodemailer's createTransport is never actually called.
+      server: { host: "localhost", port: 587, auth: { user: "x", pass: "x" } },
       from: "noreply@cambridgetcg.com",
-      options: {},
-    },
+      sendVerificationRequest,
+    }),
   ],
   pages: {
     signIn: "/login",
