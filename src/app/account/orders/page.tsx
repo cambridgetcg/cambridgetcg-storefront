@@ -52,18 +52,15 @@ export default function OrdersPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-neutral-950 flex items-center justify-center">
+      <div className="flex items-center justify-center py-12">
         <p className="text-neutral-500">Loading...</p>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950">
-      <div className="max-w-2xl mx-auto px-4 py-8">
-        <Link href="/account" className="text-sm text-neutral-400 hover:text-white transition mb-6 inline-block">
-          ← My Account
-        </Link>
+    <div>
+      <div>
         <h1 className="text-2xl font-bold text-white mb-8">My Orders</h1>
 
         {orders.length === 0 ? (
@@ -139,6 +136,6 @@ export default function OrdersPage() {
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }
