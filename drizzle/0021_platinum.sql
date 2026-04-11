@@ -21,7 +21,7 @@ VALUES (
   '💎', '#E5E4E2', 3, 0,
   8, 3.00, 15,
   0.0000, 0.0000, true,
-  12.00, true, 14.99, 149.99,
+  12.00, true, 22.00, 222.00,
   '["12% off all store purchases", "0% P2P marketplace commission", "0% auction commission", "3x points multiplier", "8% cashback on purchases", "15% trade-in bonus", "Priority auction approval", "Priority support", "Exclusive Platinum mystery boxes", "Early access to new sets"]'::jsonb
 )
 ON CONFLICT (name) DO NOTHING;

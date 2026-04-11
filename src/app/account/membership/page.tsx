@@ -84,6 +84,7 @@ export default function MembershipPage() {
   const [loading, setLoading] = useState(true);
   const [showAllPoints, setShowAllPoints] = useState(false);
   const [showAllCredits, setShowAllCredits] = useState(false);
+  const [subscribing, setSubscribing] = useState<"monthly" | "annual" | null>(null);
 
   useEffect(() => {
     // Check auth then fetch membership data
@@ -110,6 +111,23 @@ export default function MembershipPage() {
       });
   }, [router]);
 
+  async function handleSubscribe(plan: "monthly" | "annual") {
+    setSubscribing(plan);
+    try {
+      const res = await fetch("/api/membership/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch {
+      setSubscribing(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -132,10 +150,170 @@ export default function MembershipPage() {
   const isMaxTier = !profile.next_tier;
   const visiblePoints = showAllPoints ? pointsHistory : pointsHistory.slice(0, 5);
   const visibleCredits = showAllCredits ? creditHistory : creditHistory.slice(0, 5);
+  const isPlatinum = tier?.name === "Platinum";
+
+  // Find Platinum tier from the tiers list for pricing info
+  const platinumTier = tiers.find(t => t.name === "Platinum");
+  const monthlyPrice = platinumTier?.monthly_price ? parseFloat(platinumTier.monthly_price) : 22;
+  const annualPrice = platinumTier?.annual_price ? parseFloat(platinumTier.annual_price) : 222;
+  const annualSavings = (monthlyPrice * 12) - annualPrice;
+  const annualSavingsPercent = Math.round((annualSavings / (monthlyPrice * 12)) * 100);
 
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-white">Membership</h1>
+
+      {/* ── 0. PLATINUM UPGRADE BANNER / PLATINUM STATUS ───────────────────── */}
+      {isPlatinum ? (
+        /* Platinum member status card */
+        <div
+          className="relative rounded-2xl p-6 sm:p-8 overflow-hidden"
+          style={{
+            background: "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #1a1a2e 100%)",
+            border: "1px solid rgba(229, 228, 226, 0.3)",
+          }}
+        >
+          {/* Diamond shimmer effect */}
+          <div className="absolute -top-20 -right-20 w-72 h-72 rounded-full blur-3xl opacity-15" style={{ background: "linear-gradient(135deg, #E5E4E2, #B8B5B2)" }} />
+          <div className="absolute -bottom-16 -left-16 w-48 h-48 rounded-full blur-3xl opacity-10" style={{ background: "linear-gradient(135deg, #C0B8D6, #E5E4E2)" }} />
+
+          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <span className="text-3xl">💎</span>
+                <div>
+                  <h2 className="text-xl font-bold" style={{ color: "#E5E4E2" }}>Platinum Member</h2>
+                  <p className="text-sm text-neutral-400">
+                    {profile.tier_source === "subscription" ? "Active subscription" : "Active"}
+                  </p>
+                </div>
+              </div>
+            </div>
+            <a
+              href="/account/billing"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              style={{
+                background: "rgba(229, 228, 226, 0.1)",
+                color: "#E5E4E2",
+                border: "1px solid rgba(229, 228, 226, 0.2)",
+              }}
+            >
+              Manage Subscription
+            </a>
+          </div>
+        </div>
+      ) : (
+        /* Platinum upgrade banner for non-Platinum members */
+        <div
+          className="relative rounded-2xl p-6 sm:p-8 overflow-hidden"
+          style={{
+            background: "linear-gradient(135deg, #0d0d1a 0%, #121228 50%, #0d0d1a 100%)",
+            border: "2px solid transparent",
+            backgroundClip: "padding-box",
+          }}
+        >
+          {/* Gradient border overlay */}
+          <div
+            className="absolute inset-0 -z-10 rounded-2xl"
+            style={{
+              margin: "-2px",
+              background: "linear-gradient(135deg, #B8B5B2, #9B8EC4, #E5E4E2, #9B8EC4, #B8B5B2)",
+              borderRadius: "inherit",
+            }}
+          />
+          <div
+            className="absolute inset-0 rounded-2xl"
+            style={{
+              background: "linear-gradient(135deg, #0d0d1a 0%, #121228 50%, #0d0d1a 100%)",
+            }}
+          />
+
+          {/* Shimmer effects */}
+          <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full blur-3xl opacity-10" style={{ background: "linear-gradient(135deg, #E5E4E2, #9B8EC4)" }} />
+
+          <div className="relative z-10">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="text-3xl">💎</span>
+              <h2 className="text-xl font-bold" style={{ color: "#E5E4E2" }}>Upgrade to Platinum</h2>
+            </div>
+            <p className="text-neutral-400 mb-6">Zero fees. Maximum rewards. 12% off everything.</p>
+
+            {/* Pricing cards */}
+            <div className="grid gap-4 sm:grid-cols-2 max-w-md mb-6">
+              {/* Monthly */}
+              <div className="rounded-xl border border-neutral-700 bg-neutral-900/80 p-4 text-center">
+                <p className="text-xs font-medium text-neutral-500 uppercase tracking-wider mb-2">Monthly</p>
+                <p className="text-2xl font-bold text-white mb-1">
+                  {formatPrice(monthlyPrice)}
+                  <span className="text-sm font-normal text-neutral-500"> /month</span>
+                </p>
+                <button
+                  onClick={() => handleSubscribe("monthly")}
+                  disabled={subscribing !== null}
+                  className="mt-3 w-full px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
+                  style={{
+                    background: subscribing === "monthly"
+                      ? "rgba(229, 228, 226, 0.3)"
+                      : "linear-gradient(135deg, #B8B5B2, #E5E4E2)",
+                    color: "#0d0d1a",
+                  }}
+                >
+                  {subscribing === "monthly" ? "Redirecting..." : "Subscribe"}
+                </button>
+              </div>
+
+              {/* Annual */}
+              <div
+                className="rounded-xl p-4 text-center relative"
+                style={{
+                  background: "rgba(229, 228, 226, 0.05)",
+                  border: "1px solid rgba(229, 228, 226, 0.25)",
+                }}
+              >
+                <p className="text-xs font-medium uppercase tracking-wider mb-2" style={{ color: "#E5E4E2" }}>Annual</p>
+                <p className="text-2xl font-bold text-white mb-1">
+                  {formatPrice(annualPrice)}
+                  <span className="text-sm font-normal text-neutral-500"> /year</span>
+                </p>
+                <p className="text-xs text-emerald-400 font-medium">
+                  Save {formatPrice(annualSavings)} ({annualSavingsPercent}%)
+                </p>
+                <button
+                  onClick={() => handleSubscribe("annual")}
+                  disabled={subscribing !== null}
+                  className="mt-3 w-full px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
+                  style={{
+                    background: subscribing === "annual"
+                      ? "rgba(229, 228, 226, 0.3)"
+                      : "linear-gradient(135deg, #B8B5B2, #E5E4E2)",
+                    color: "#0d0d1a",
+                  }}
+                >
+                  {subscribing === "annual" ? "Redirecting..." : "Subscribe"}
+                </button>
+              </div>
+            </div>
+
+            {/* Platinum perks checklist */}
+            <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                "0% P2P commission",
+                "0% auction fees",
+                "12% off all purchases",
+                "8% cashback",
+                "3x points",
+                "15% trade-in bonus",
+                "Priority everything",
+              ].map(perk => (
+                <div key={perk} className="flex items-center gap-2 text-sm text-neutral-300">
+                  <span className="text-emerald-400 shrink-0">&#10003;</span>
+                  {perk}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 1. MEMBERSHIP CARD ─────────────────────────────────────────────── */}
       <div className={`relative rounded-2xl border ${tierColor.border} ${tierColor.bg} p-6 sm:p-8 overflow-hidden`}>
@@ -219,6 +397,12 @@ export default function MembershipPage() {
             value={`${(profile.perks.auction_commission_rate * 100).toFixed(0)}%`}
             description={profile.perks.auction_commission_rate < 0.12 ? `commission (standard 12%)` : "commission"}
             highlight={profile.perks.auction_commission_rate < 0.12}
+          />
+          <PerkCard
+            label="Store Discount"
+            value={`${profile.perks.store_discount_percent}%`}
+            description={profile.perks.store_discount_percent > 0 ? "off all purchases" : "store discount"}
+            highlight={profile.perks.store_discount_percent > 0}
           />
           {profile.perks.auction_priority_approval && (
             <PerkCard
@@ -339,18 +523,28 @@ export default function MembershipPage() {
       {tiers.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold text-white mb-4">All Tiers</h2>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {tiers.map(t => {
               const isCurrent = tier?.id === t.id;
               const c = tc(t.color);
+              const isPlatinumTier = t.name === "Platinum";
               return (
                 <div
                   key={t.id}
-                  className={`bg-neutral-900 rounded-xl p-5 border transition-all ${
-                    isCurrent
-                      ? `${c.border} ring-2 ${c.glow}`
-                      : "border-neutral-800"
+                  className={`rounded-xl p-5 transition-all ${
+                    isPlatinumTier
+                      ? "relative"
+                      : isCurrent
+                        ? `bg-neutral-900 border ${c.border} ring-2 ${c.glow}`
+                        : "bg-neutral-900 border border-neutral-800"
                   }`}
+                  style={isPlatinumTier ? {
+                    background: "linear-gradient(135deg, #0d0d1a 0%, #121228 50%, #0d0d1a 100%)",
+                    border: isCurrent ? "2px solid rgba(229, 228, 226, 0.5)" : "2px solid rgba(229, 228, 226, 0.2)",
+                    boxShadow: isCurrent
+                      ? "0 0 20px rgba(229, 228, 226, 0.15), inset 0 1px 0 rgba(229, 228, 226, 0.1)"
+                      : "0 0 12px rgba(229, 228, 226, 0.08), inset 0 1px 0 rgba(229, 228, 226, 0.05)",
+                  } : undefined}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <TierBadge name={t.name} icon={t.icon} color={t.color} />
@@ -360,17 +554,32 @@ export default function MembershipPage() {
                   </div>
 
                   <p className="text-xs text-neutral-500 mb-3">
-                    {parseFloat(t.min_annual_spend) === 0
-                      ? "Free — all members"
-                      : `${formatPrice(parseFloat(t.min_annual_spend))}+ annual spend`}
+                    {t.is_paid && t.monthly_price && t.annual_price
+                      ? `${formatPrice(parseFloat(t.monthly_price))}/mo or ${formatPrice(parseFloat(t.annual_price))}/yr`
+                      : parseFloat(t.min_annual_spend) === 0
+                        ? "Free — all members"
+                        : `${formatPrice(parseFloat(t.min_annual_spend))}+ annual spend`}
                   </p>
 
                   <div className="space-y-2 mb-4">
                     <TierStat label="Cashback" value={`${parseFloat(t.cashback_percent)}%`} />
                     <TierStat label="Points" value={`${parseFloat(t.points_multiplier)}x`} />
                     <TierStat label="Trade-in bonus" value={`${parseFloat(t.tradein_bonus_percent)}%`} />
-                    <TierStat label="P2P commission" value={`${(parseFloat(t.p2p_commission_rate) * 100).toFixed(0)}%`} />
-                    <TierStat label="Auction commission" value={`${(parseFloat(t.auction_commission_rate) * 100).toFixed(0)}%`} />
+                    <TierStat
+                      label="P2P commission"
+                      value={`${(parseFloat(t.p2p_commission_rate) * 100).toFixed(0)}%`}
+                      highlight={parseFloat(t.p2p_commission_rate) === 0}
+                    />
+                    <TierStat
+                      label="Auction commission"
+                      value={`${(parseFloat(t.auction_commission_rate) * 100).toFixed(0)}%`}
+                      highlight={parseFloat(t.auction_commission_rate) === 0}
+                    />
+                    <TierStat
+                      label="Store discount"
+                      value={`${parseFloat(t.store_discount_percent)}%`}
+                      highlight={parseFloat(t.store_discount_percent) > 0}
+                    />
                     {t.auction_priority_approval && (
                       <TierStat label="Priority approval" value="Yes" />
                     )}
@@ -417,11 +626,11 @@ function PerkCard({ label, value, description, highlight }: {
   );
 }
 
-function TierStat({ label, value }: { label: string; value: string }) {
+function TierStat({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div className="flex justify-between text-xs">
       <span className="text-neutral-500">{label}</span>
-      <span className="text-neutral-300 font-medium">{value}</span>
+      <span className={`font-medium ${highlight ? "text-emerald-400" : "text-neutral-300"}`}>{value}</span>
     </div>
   );
 }
