@@ -171,14 +171,14 @@ export async function checkFraudSignals(userId: string, context: {
   if (accountAge < 7 && (context.tradeValue || 0) > 100) {
     const signal = FRAUD_SIGNALS.NEW_ACCOUNT_HIGH_VALUE;
     await recordSignal(userId, context.tradeValue ? undefined : undefined, signal.type, signal.severity, signal.desc, "flag");
-    signals.push({ id: "", user_id: userId, trade_id: null, ...signal, signal_type: signal.type, auto_action: "flag", resolved: false, created_at: "" });
+    signals.push({ id: "", user_id: userId, trade_id: null, signal_type: signal.type, severity: signal.severity, description: signal.desc, auto_action: "flag", resolved: false, created_at: "" });
   }
 
   // Self-trading check (same buyer and seller — should be blocked at API level too)
   if (context.counterpartyId && context.counterpartyId === userId) {
     const signal = FRAUD_SIGNALS.SELF_TRADING;
     await recordSignal(userId, null, signal.type, signal.severity, signal.desc, "block_trade");
-    signals.push({ id: "", user_id: userId, trade_id: null, ...signal, signal_type: signal.type, auto_action: "block_trade", resolved: false, created_at: "" });
+    signals.push({ id: "", user_id: userId, trade_id: null, signal_type: signal.type, severity: signal.severity, description: signal.desc, auto_action: "block_trade", resolved: false, created_at: "" });
   }
 
   // Rapid listing (more than 20 in an hour)
@@ -190,7 +190,7 @@ export async function checkFraudSignals(userId: string, context: {
     if (parseInt(recentListings.rows[0].count) > 20) {
       const signal = FRAUD_SIGNALS.RAPID_LISTING;
       await recordSignal(userId, null, signal.type, signal.severity, signal.desc, "flag");
-      signals.push({ id: "", user_id: userId, trade_id: null, ...signal, signal_type: signal.type, auto_action: "flag", resolved: false, created_at: "" });
+      signals.push({ id: "", user_id: userId, trade_id: null, signal_type: signal.type, severity: signal.severity, description: signal.desc, auto_action: "flag", resolved: false, created_at: "" });
     }
   }
 
