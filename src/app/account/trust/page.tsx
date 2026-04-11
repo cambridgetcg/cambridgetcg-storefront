@@ -107,6 +107,93 @@ function BreakdownBar({ label, value, max }: { label: string; value: number; max
   );
 }
 
+// ── Escrow thresholds section ──
+
+interface ThresholdsData {
+  thresholds: {
+    directMax: number;
+    verifiedMax: number;
+    trustTier: string;
+  };
+}
+
+function EscrowThresholdsSection({ trustScore }: { trustScore: number }) {
+  const [data, setData] = useState<ThresholdsData | null>(null);
+
+  useEffect(() => {
+    fetch("/api/escrow/routing")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setData(d); })
+      .catch(() => {});
+  }, []);
+
+  if (!data) return null;
+
+  const { directMax, verifiedMax } = data.thresholds;
+
+  // Build the next-tier improvements hint
+  const improvements: string[] = [];
+  if (trustScore < 20) {
+    improvements.push("Reach Starter (20+) to unlock Direct Ship up to \u00a330");
+  } else if (trustScore < 50) {
+    improvements.push("Reach Trusted (50+) to unlock Direct Ship up to \u00a350");
+  } else if (trustScore < 80) {
+    improvements.push("Reach Veteran (80+) to unlock Direct Ship up to \u00a3100");
+  } else if (trustScore < 95) {
+    improvements.push("Reach Elite (95+) to unlock Direct Ship up to \u00a3500");
+  }
+
+  return (
+    <div className="bg-neutral-900 rounded-xl p-6 mb-6">
+      <h3 className="text-lg font-semibold text-white mb-4">Your Trade Thresholds</h3>
+      <p className="text-sm text-neutral-400 mb-4">
+        Based on your trust score ({trustScore}):
+      </p>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <span className="text-sm font-medium text-emerald-400">Direct Ship</span>
+          </div>
+          <span className="text-sm text-neutral-300">
+            trades up to <span className="font-mono font-semibold text-emerald-400">{formatPrice(directMax)}</span>
+          </span>
+        </div>
+        {directMax !== verifiedMax && (
+          <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-400" />
+              <span className="text-sm font-medium text-blue-400">Verified Ship</span>
+            </div>
+            <span className="text-sm text-neutral-300">
+              trades up to <span className="font-mono font-semibold text-blue-400">{formatPrice(verifiedMax)}</span>
+            </span>
+          </div>
+        )}
+        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span className="text-sm font-medium text-amber-400">Full Escrow</span>
+          </div>
+          <span className="text-sm text-neutral-300">
+            trades above <span className="font-mono font-semibold text-amber-400">{formatPrice(verifiedMax)}</span>
+          </span>
+        </div>
+      </div>
+      {improvements.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-neutral-800">
+          {improvements.map((tip, i) => (
+            <p key={i} className="text-xs text-neutral-500 flex items-center gap-1.5">
+              <span className="text-amber-400">&uarr;</span>
+              {tip}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const PLATFORM_OPTIONS = ["eBay", "Cardmarket", "TCGPlayer", "Discord", "Facebook", "Other"];
 
 export default function TrustProfilePage() {
@@ -256,6 +343,9 @@ export default function TrustProfilePage() {
           <BreakdownBar label="External Rep" value={Math.round(externalPct)} max={100} />
         </div>
       </div>
+
+      {/* Escrow Trade Thresholds */}
+      <EscrowThresholdsSection trustScore={score} />
 
       {/* Trade Stats */}
       <div className="bg-neutral-900 rounded-xl p-6 mb-6">

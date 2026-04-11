@@ -5,6 +5,156 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { DISPUTE_REASONS } from "@/lib/trust/types";
 import type { TradeDispute, DisputeMessage } from "@/lib/trust/types";
+import type { EscrowTier } from "@/lib/escrow/service-tiers";
+
+// ── Escrow tier display ──
+
+interface EscrowRoutingData {
+  routing: {
+    tier: EscrowTier;
+    label: string;
+    description: string;
+    estimatedDays: string;
+  };
+  summary: string[];
+}
+
+const TIER_BADGE: Record<EscrowTier, { bg: string; text: string; border: string; label: string }> = {
+  direct: {
+    bg: "bg-emerald-500/15",
+    text: "text-emerald-400",
+    border: "border-emerald-500/30",
+    label: "Seller ships to you directly",
+  },
+  verified: {
+    bg: "bg-blue-500/15",
+    text: "text-blue-400",
+    border: "border-blue-500/30",
+    label: "Photo-verified, seller ships to you",
+  },
+  full_escrow: {
+    bg: "bg-amber-500/15",
+    text: "text-amber-400",
+    border: "border-amber-500/30",
+    label: "Ships through Cambridge TCG",
+  },
+};
+
+const WORKFLOW_STEPS: Record<EscrowTier, string[]> = {
+  direct: ["Paid", "Seller Ships", "Delivered", "Dispute Window", "Payout"],
+  verified: ["Paid", "Photos Uploaded", "CTCG Reviews", "Seller Ships", "Delivered", "Payout"],
+  full_escrow: ["Paid", "Seller Ships to CTCG", "CTCG Inspects", "CTCG Ships to Buyer", "Payout"],
+};
+
+// Map escrow_status values to the step index they correspond to
+function getActiveStep(tier: EscrowTier, escrowStatus?: string): number {
+  if (!escrowStatus) return 0;
+  const s = escrowStatus.toLowerCase();
+
+  if (tier === "direct") {
+    if (s.includes("payout") || s === "complete") return 4;
+    if (s.includes("dispute")) return 3;
+    if (s.includes("deliver")) return 2;
+    if (s.includes("ship") || s.includes("transit")) return 1;
+    return 0;
+  }
+  if (tier === "verified") {
+    if (s.includes("payout") || s === "complete") return 5;
+    if (s.includes("deliver")) return 4;
+    if (s.includes("ship") || s.includes("transit")) return 3;
+    if (s.includes("review")) return 2;
+    if (s.includes("photo")) return 1;
+    return 0;
+  }
+  // full_escrow
+  if (s.includes("payout") || s === "complete") return 4;
+  if (s.includes("ctcg_ship") || s.includes("forwarded") || s.includes("shipped_to_buyer")) return 3;
+  if (s.includes("inspect")) return 2;
+  if (s.includes("ship") || s.includes("transit") || s.includes("received_ctcg")) return 1;
+  return 0;
+}
+
+function EscrowTimeline({ tier, escrowStatus }: { tier: EscrowTier; escrowStatus?: string }) {
+  const steps = WORKFLOW_STEPS[tier];
+  const activeIdx = getActiveStep(tier, escrowStatus);
+  const style = TIER_BADGE[tier];
+
+  return (
+    <div className="flex items-center gap-0 overflow-x-auto py-2">
+      {steps.map((step, i) => {
+        const isDone = i < activeIdx;
+        const isCurrent = i === activeIdx;
+        const dotColor = isDone
+          ? "bg-emerald-400"
+          : isCurrent
+          ? style.bg.replace("/15", "") + " ring-2 ring-offset-1 ring-offset-neutral-900 " + style.border.replace("border-", "ring-")
+          : "bg-neutral-700";
+        const lineColor = isDone ? "bg-emerald-400/50" : "bg-neutral-700";
+        const textColor = isDone ? "text-emerald-400" : isCurrent ? style.text : "text-neutral-600";
+
+        return (
+          <div key={i} className="flex items-center">
+            <div className="flex flex-col items-center min-w-[80px]">
+              <div
+                className={`w-3 h-3 rounded-full ${
+                  isDone
+                    ? "bg-emerald-400"
+                    : isCurrent
+                    ? `${style.text.replace("text-", "bg-").replace("400", "400")} ring-2 ring-offset-1 ring-offset-neutral-900 ${style.border.replace("border", "ring")}`
+                    : "bg-neutral-700"
+                }`}
+              />
+              <span className={`text-[10px] mt-1.5 text-center leading-tight ${textColor}`}>
+                {step}
+              </span>
+            </div>
+            {i < steps.length - 1 && (
+              <div className={`h-0.5 w-6 shrink-0 ${lineColor} -mt-4`} />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function EscrowBadgeSection({ tradeId, escrowStatus }: { tradeId: string; escrowStatus?: string }) {
+  const [data, setData] = useState<EscrowRoutingData | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/escrow/routing?tradeId=${tradeId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setData(d); })
+      .catch(() => {});
+  }, [tradeId]);
+
+  if (!data) return null;
+
+  const badge = TIER_BADGE[data.routing.tier];
+
+  return (
+    <div className={`rounded-xl border ${badge.border} ${badge.bg} p-4 space-y-3`}>
+      <div className="flex items-center gap-3">
+        <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold border ${badge.border} ${badge.text}`}>
+          {data.routing.label}
+        </span>
+        <span className="text-sm text-neutral-300">{badge.label}</span>
+        <span className="ml-auto text-xs text-neutral-500">{data.routing.estimatedDays}</span>
+      </div>
+
+      <EscrowTimeline tier={data.routing.tier} escrowStatus={escrowStatus} />
+
+      <ul className="space-y-1 pt-1 border-t border-neutral-800">
+        {data.summary.map((point, i) => (
+          <li key={i} className="text-xs text-neutral-400 flex items-start gap-1.5">
+            <span className={`mt-0.5 ${badge.text}`}>&bull;</span>
+            <span>{point}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export default function TradeDetailPage() {
   const params = useParams();
@@ -209,6 +359,9 @@ export default function TradeDetailPage() {
           <p className="text-red-400 text-sm">{error}</p>
         </div>
       )}
+
+      {/* Escrow routing & workflow */}
+      <EscrowBadgeSection tradeId={tradeId} escrowStatus={trade?.escrow_status || trade?.status} />
 
       {/* Trade info */}
       {trade && (

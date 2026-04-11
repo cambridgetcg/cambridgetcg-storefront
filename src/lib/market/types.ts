@@ -51,6 +51,12 @@ export interface MarketTrade {
   tracking_to_buyer: string | null;
   dispute_reason: string | null;
   admin_notes: string | null;
+  escrow_tier: "direct" | "verified" | "full_escrow" | null;
+  requires_photos: boolean;
+  requires_inspection: boolean;
+  seller_ships_to: "buyer" | "ctcg" | null;
+  dispute_window_hours: number | null;
+  payout_hold_days: number | null;
   created_at: string;
   // Joined
   buyer_name?: string | null;

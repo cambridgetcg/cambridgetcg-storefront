@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/format";
 import type { OrderBookEntry, MarketTrade } from "@/lib/market/types";
 import type { UnifiedMarketView } from "@/lib/market/unified";
+import type { EscrowTier } from "@/lib/escrow/service-tiers";
 
 const CONDITIONS = [
   "Near Mint",
@@ -214,6 +215,80 @@ function SpotPricePanel({ view }: { view: UnifiedMarketView }) {
           <span className="text-xs font-mono text-neutral-300">~{formatPrice(tradein_cash)}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Escrow routing preview ──
+
+interface EscrowPreview {
+  routing: {
+    tier: EscrowTier;
+    label: string;
+    description: string;
+    estimatedDays: string;
+  };
+  summary: string[];
+}
+
+const TIER_STYLES: Record<EscrowTier, { border: string; bg: string; text: string; icon: string }> = {
+  direct: {
+    border: "border-emerald-500/30",
+    bg: "bg-emerald-500/10",
+    text: "text-emerald-400",
+    icon: "\u2192", // →
+  },
+  verified: {
+    border: "border-blue-500/30",
+    bg: "bg-blue-500/10",
+    text: "text-blue-400",
+    icon: "\u2713", // ✓
+  },
+  full_escrow: {
+    border: "border-amber-500/30",
+    bg: "bg-amber-500/10",
+    text: "text-amber-400",
+    icon: "\u26e8", // ⛨ (shield-like)
+  },
+};
+
+function EscrowRoutingPreview({ orderValue }: { orderValue: number }) {
+  const [preview, setPreview] = useState<EscrowPreview | null>(null);
+
+  useEffect(() => {
+    if (!orderValue || orderValue <= 0) {
+      setPreview(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetch(`/api/escrow/routing?value=${orderValue}`, { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (data) setPreview(data); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [orderValue]);
+
+  if (!preview) return null;
+
+  const style = TIER_STYLES[preview.routing.tier];
+
+  return (
+    <div className={`mt-4 rounded-lg border ${style.border} ${style.bg} p-3`}>
+      <p className="text-xs text-neutral-400 mb-2 font-medium uppercase tracking-wide">How this trade will work</p>
+      <div className="flex items-center gap-2 mb-2">
+        <span className={`text-base ${style.text}`}>{style.icon}</span>
+        <span className={`text-sm font-semibold ${style.text}`}>{preview.routing.label}</span>
+        <span className="text-xs text-neutral-500">&mdash; {preview.routing.description.split(".")[0]}</span>
+        <span className="ml-auto text-xs text-neutral-500">({preview.routing.estimatedDays})</span>
+      </div>
+      <ul className="space-y-1">
+        {preview.summary.map((point, i) => (
+          <li key={i} className="text-xs text-neutral-400 flex items-start gap-1.5">
+            <span className={`mt-0.5 ${style.text}`}>&bull;</span>
+            <span>{point}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -578,6 +653,11 @@ export default function CardMarketPage() {
                   </div>
                 )}
               </form>
+            )}
+
+            {/* Escrow routing preview */}
+            {loggedIn !== false && price && quantity && (
+              <EscrowRoutingPreview orderValue={parseFloat(price) * parseInt(quantity, 10) || 0} />
             )}
 
             {/* Sell to CTCG section */}
