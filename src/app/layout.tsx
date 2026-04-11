@@ -7,6 +7,7 @@ import Footer from "@/components/layout/Footer";
 import Providers from "@/components/layout/Providers";
 
 const GA_ID = "G-K86TBF328F";
+const GADS_ID = "AW-16597058275";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           function gtag(){dataLayer.push(arguments);}
           gtag('js', new Date());
           gtag('config', '${GA_ID}');
+          gtag('config', '${GADS_ID}');
         `}
       </Script>
       <body className={inter.className}>
