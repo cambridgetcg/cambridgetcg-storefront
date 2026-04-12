@@ -9,8 +9,16 @@ import { formatPrice } from "@/lib/format";
 function rarityBadge(rarity: string | null) {
   if (!rarity) return null;
   const r = rarity.toUpperCase();
+  const isParallel = r.includes("/P") || r.includes("/SP");
+
   let cls = "";
-  if (r === "SR" || r === "SEC" || r === "SP" || r === "SCR" || r === "L" || r === "SEC/SP")
+  let label = rarity;
+
+  if (isParallel) {
+    // Parallel cards labelled as AA (Alt Art)
+    cls = "bg-pink-500/20 text-pink-400";
+    label = "AA";
+  } else if (r === "SR" || r === "SEC" || r === "SP" || r === "SCR" || r === "L" || r === "SEC/SP")
     cls = "bg-yellow-500/20 text-yellow-400";
   else if (r === "R" || r === "RR" || r === "SSR")
     cls = "bg-purple-500/20 text-purple-400";
@@ -18,11 +26,12 @@ function rarityBadge(rarity: string | null) {
     cls = "bg-blue-500/20 text-blue-400";
   else if (r === "C")
     cls = "bg-neutral-700 text-neutral-400";
-  else return null;
+  else
+    cls = "bg-neutral-700 text-neutral-400";
 
   return (
     <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full ${cls}`}>
-      {rarity}
+      {label}
     </span>
   );
 }
