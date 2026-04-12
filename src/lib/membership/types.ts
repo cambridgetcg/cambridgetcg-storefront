@@ -18,6 +18,7 @@ export interface Tier {
   annual_price: string | null;
   benefits: string[];
   is_active: boolean;
+  is_hidden: boolean;
 }
 
 export interface PointsEntry {

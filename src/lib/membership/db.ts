@@ -6,8 +6,9 @@ import { DEFAULT_PERKS } from "./types";
 // TIERS
 // ══════════════════════════════════════════════════════════════
 
-export async function getAllTiers(): Promise<Tier[]> {
-  const result = await query(`SELECT * FROM tiers WHERE is_active = true ORDER BY sort_order ASC`);
+export async function getAllTiers(includeHidden = false): Promise<Tier[]> {
+  const where = includeHidden ? "WHERE is_active = true" : "WHERE is_active = true AND (is_hidden = false OR is_hidden IS NULL)";
+  const result = await query(`SELECT * FROM tiers ${where} ORDER BY sort_order ASC`);
   return result.rows as Tier[];
 }
 
@@ -40,14 +41,20 @@ export async function getUserPerks(userId: string): Promise<TierPerks> {
 // ══════════════════════════════════════════════════════════════
 
 export async function recalculateTier(userId: string): Promise<{ tier: Tier | null; changed: boolean }> {
-  const tiers = await getAllTiers();
+  const tiers = await getAllTiers(true); // include hidden (OG) for resolution
   const user = await query(
-    `SELECT annual_spend, tier_id, paid_tier_id, subscription_status, subscription_expires_at FROM users WHERE id = $1`,
+    `SELECT annual_spend, tier_id, paid_tier_id, subscription_status, subscription_expires_at, tier_source FROM users WHERE id = $1`,
     [userId]
   );
   if (user.rows.length === 0) return { tier: null, changed: false };
 
   const currentTierId = user.rows[0].tier_id;
+
+  // Priority 0: Manual tier assignment (OG, special grants) — never overridden
+  if (user.rows[0].tier_source === "manual") {
+    const manualTier = tiers.find(t => t.id === currentTierId) || null;
+    if (manualTier) return { tier: manualTier, changed: false };
+  }
 
   // Priority 1: Active paid tier (Platinum) — always wins over spending-based
   const paidTierId = user.rows[0].paid_tier_id;
@@ -115,7 +122,7 @@ export async function getMemberProfile(userId: string): Promise<MemberProfile> {
        t.auction_commission_rate as t_auction, t.auction_priority_approval as t_priority,
        t.store_discount_percent as t_discount, t.is_paid as t_paid,
        t.monthly_price as t_monthly, t.annual_price as t_annual,
-       t.benefits as t_benefits
+       t.benefits as t_benefits, t.is_hidden as t_hidden
      FROM users u LEFT JOIN tiers t ON u.tier_id = t.id WHERE u.id = $1`,
     [userId]
   );
@@ -138,7 +145,7 @@ export async function getMemberProfile(userId: string): Promise<MemberProfile> {
     auction_commission_rate: u.t_auction, auction_priority_approval: u.t_priority,
     store_discount_percent: u.t_discount || "0", is_paid: u.t_paid || false,
     monthly_price: u.t_monthly || null, annual_price: u.t_annual || null,
-    benefits: u.t_benefits || [], is_active: true,
+    benefits: u.t_benefits || [], is_active: true, is_hidden: u.t_hidden || false,
   } : null;
 
   // Find next tier
