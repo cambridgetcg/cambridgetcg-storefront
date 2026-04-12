@@ -48,6 +48,13 @@ export default function TradeInTermsPage() {
           </section>
 
           <section>
+            <h2 className="text-lg font-bold text-white mb-3">Pricing &amp; Volatility</h2>
+            <p>
+              Trade-in prices are refreshed daily based on current market conditions. However, trading card markets are volatile and prices can change significantly even within the same day. The prices shown on the buylist are indicative and subject to change at the point of quotation.
+            </p>
+          </section>
+
+          <section>
             <h2 className="text-lg font-bold text-white mb-3">Price Lock Guarantee</h2>
             <p>
               Once a trade-in is submitted, the quoted prices are <strong>locked for 7 days</strong> from
