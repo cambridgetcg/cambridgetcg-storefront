@@ -17,9 +17,18 @@ export default function TradeInTermsPage() {
 
         <div className="prose prose-invert max-w-none space-y-8 text-neutral-300 text-sm leading-relaxed">
           <section>
+            <h2 className="text-lg font-bold text-white mb-3">Payout Rates</h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li><strong className="text-purple-400">Store Credit:</strong> Up to <strong>100% of market value</strong>. Store credit can only be used to purchase from Cambridge TCG.</li>
+              <li><strong className="text-emerald-400">Cash:</strong> Up to <strong>85% of market value</strong>, paid via bank transfer.</li>
+              <li><strong className="text-amber-400">MINT Bonus (+20%):</strong> Cards in perfect MINT condition (pack-fresh, zero imperfections) may qualify for an additional <strong>20% bonus</strong> on top of the base payout. The MINT bonus is discretionary and subject to the evaluation and sole decision of Cambridge TCG. It is not guaranteed and may vary per card.</li>
+            </ul>
+          </section>
+
+          <section>
             <h2 className="text-lg font-bold text-white mb-3">Card Condition</h2>
             <p>
-              All cards submitted must be in <strong>Near Mint (NM)</strong> condition. This means
+              All cards submitted should be in <strong>Near Mint (NM)</strong> or better condition. This means
               cards should have no visible wear, scratches, whitening on edges, creases, or bends.
               Cards that do not meet NM standards may be graded lower, resulting in a reduced payout,
               or returned at the customer&apos;s expense.

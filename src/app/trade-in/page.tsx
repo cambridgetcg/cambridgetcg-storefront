@@ -92,23 +92,50 @@ export default async function TradeInPage() {
           </h1>
           <p className="text-neutral-400 mt-3 max-w-xl">
             Get cash or store credit for your trading cards. Competitive prices updated daily.
-            Near Mint condition only.
           </p>
-          <div className="flex flex-wrap gap-6 mt-6">
+          <div className="flex flex-wrap gap-4 mt-6">
             <div className="bg-neutral-900 rounded-xl px-5 py-3">
               <p className="text-2xl font-bold text-amber-400">{cardsWanted}</p>
               <p className="text-xs text-neutral-400">Cards wanted</p>
             </div>
             <div className="bg-neutral-900 rounded-xl px-5 py-3">
-              <p className="text-2xl font-bold text-amber-400">
-                Up to {formatPrice(maxCredit)}
-              </p>
-              <p className="text-xs text-neutral-400">Credit per card</p>
+              <p className="text-2xl font-bold text-purple-400">100%</p>
+              <p className="text-xs text-neutral-400">Market value in credit</p>
+            </div>
+            <div className="bg-neutral-900 rounded-xl px-5 py-3">
+              <p className="text-2xl font-bold text-emerald-400">Up to 85%</p>
+              <p className="text-xs text-neutral-400">Market value in cash</p>
+            </div>
+            <div className="bg-neutral-900 rounded-xl px-5 py-3">
+              <p className="text-2xl font-bold text-amber-400">+20%</p>
+              <p className="text-xs text-neutral-400">MINT bonus</p>
             </div>
             <div className="bg-neutral-900 rounded-xl px-5 py-3">
               <p className="text-2xl font-bold text-amber-400">7 days</p>
-              <p className="text-xs text-neutral-400">Price lock guarantee</p>
+              <p className="text-xs text-neutral-400">Price lock</p>
             </div>
+          </div>
+
+          {/* Payout tiers */}
+          <div className="mt-6 bg-neutral-900 border border-neutral-800 rounded-xl p-5 max-w-2xl">
+            <h3 className="text-sm font-bold text-white mb-3">How Payouts Work</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex items-start gap-3">
+                <span className="shrink-0 w-16 text-right font-bold text-purple-400">Credit</span>
+                <p className="text-neutral-300">Receive <span className="text-white font-semibold">up to 100% of market value</span> in store credit. Use it to buy any card in our shop.</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="shrink-0 w-16 text-right font-bold text-emerald-400">Cash</span>
+                <p className="text-neutral-300">Receive <span className="text-white font-semibold">up to 85% of market value</span> via bank transfer.</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <span className="shrink-0 w-16 text-right font-bold text-amber-400">MINT</span>
+                <p className="text-neutral-300">Cards in perfect MINT condition may qualify for a <span className="text-white font-semibold">+20% bonus</span> on top of the base payout. MINT bonus is at the discretion of Cambridge TCG based on our evaluation.</p>
+              </div>
+            </div>
+            <p className="text-xs text-neutral-500 mt-3">
+              MINT bonus is not guaranteed and is subject to the evaluation and decision of Cambridge TCG. Cards must be pack-fresh with zero imperfections to qualify.
+            </p>
           </div>
           <div className="flex gap-3 mt-6 text-sm">
             <Link
