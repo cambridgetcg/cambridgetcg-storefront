@@ -17,6 +17,7 @@
 import { query } from "@/lib/db";
 import type { TrustProfile, FraudSignal } from "./types";
 import { TRUST_TIERS, FRAUD_SIGNALS } from "./types";
+import { awardAchievement } from "@/lib/social/db";
 
 export async function calculateTrustScore(userId: string): Promise<TrustProfile> {
   // Ensure trust profile exists
@@ -114,6 +115,10 @@ export async function calculateTrustScore(userId: string): Promise<TrustProfile>
 
   // Update user's trust score
   await query(`UPDATE users SET trust_score=$2, trade_count=$3 WHERE id=$1`, [userId, trustScore, totalTrades]);
+
+  // Social: trust milestone achievements
+  if (trustScore >= 50) awardAchievement(userId, "trust_50").catch(() => {});
+  if (trustScore >= 80) awardAchievement(userId, "trust_80").catch(() => {});
 
   const profile = await query(`SELECT * FROM trust_profiles WHERE user_id=$1`, [userId]);
   return profile.rows[0] as TrustProfile;
@@ -246,6 +251,9 @@ export async function submitReview(data: {
      data.cardAccuracy || null, data.shippingSpeed || null,
      data.communication || null, data.comment || null]
   );
+
+  // Social: first review achievement
+  awardAchievement(data.reviewerId, "first_review").catch(() => {});
 
   // Recalculate trust score for reviewee
   await calculateTrustScore(data.revieweeId);

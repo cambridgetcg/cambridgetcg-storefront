@@ -1,5 +1,6 @@
 import { query } from "@/lib/db";
 import type { Auction, AuctionImage, AuctionSummary, AuctionDetail, Bid, CreateAuctionInput, BidResult } from "./types";
+import { postActivity, awardAchievement } from "@/lib/social/db";
 
 // ── List auctions (public) ──
 
@@ -356,6 +357,11 @@ export async function createSellerAuction(userId: string, data: {
       userId,
     ]
   );
+
+  // Social: activity feed + achievement
+  postActivity(userId, "auction_listed", "Listed a card at auction").catch(() => {});
+  awardAchievement(userId, "first_auction").catch(() => {});
+
   return result.rows[0] as Auction;
 }
 

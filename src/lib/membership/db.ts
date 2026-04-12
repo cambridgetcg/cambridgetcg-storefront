@@ -1,6 +1,7 @@
 import { query } from "@/lib/db";
 import type { Tier, PointsEntry, CreditEntry, MemberProfile, TierPerks } from "./types";
 import { DEFAULT_PERKS } from "./types";
+import { postActivity, awardAchievement } from "@/lib/social/db";
 
 // ══════════════════════════════════════════════════════════════
 // TIERS
@@ -72,6 +73,12 @@ export async function recalculateTier(userId: string): Promise<{ tier: Tier | nu
           `UPDATE users SET tier_id=$1, tier_source='subscription', tier_calculated_at=NOW(), updated_at=NOW() WHERE id=$2`,
           [paidTierId, userId]
         );
+
+        // Social: activity feed + tier achievement
+        postActivity(userId, "tier_upgraded", `Reached ${paidTier.name} tier!`).catch(() => {});
+        const paidTierNameLower = paidTier.name.toLowerCase();
+        if (paidTierNameLower.includes("silver")) awardAchievement(userId, "silver_member").catch(() => {});
+        if (paidTierNameLower.includes("gold")) awardAchievement(userId, "gold_member").catch(() => {});
       }
       return { tier: paidTier, changed };
     }
@@ -101,6 +108,14 @@ export async function recalculateTier(userId: string): Promise<{ tier: Tier | nu
       `UPDATE users SET tier_id = $1, tier_calculated_at = NOW(), updated_at = NOW() WHERE id = $2`,
       [newTierId, userId]
     );
+
+    // Social: activity feed + tier achievement
+    if (qualifiedTier) {
+      postActivity(userId, "tier_upgraded", `Reached ${qualifiedTier.name} tier!`).catch(() => {});
+      const tierNameLower = qualifiedTier.name.toLowerCase();
+      if (tierNameLower.includes("silver")) awardAchievement(userId, "silver_member").catch(() => {});
+      if (tierNameLower.includes("gold")) awardAchievement(userId, "gold_member").catch(() => {});
+    }
   }
 
   return { tier: qualifiedTier, changed };

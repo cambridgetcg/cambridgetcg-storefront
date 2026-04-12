@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { reportSale } from "@/lib/wholesale/client";
 import { query } from "@/lib/db";
 import { processOrderRewards } from "@/lib/membership/db";
+import { postActivity, awardAchievement } from "@/lib/social/db";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!.trim(), {
   apiVersion: "2026-02-25.clover",
@@ -98,6 +99,12 @@ export async function POST(request: Request) {
       );
 
       console.log(`[webhook] Order ${session.id} recorded for ${email}`);
+
+      // Social: activity feed + achievement
+      if (userId) {
+        postActivity(userId, "card_added", "Purchased cards from the store").catch(() => {});
+        awardAchievement(userId, "first_purchase").catch(() => {});
+      }
 
       // Process membership rewards (points + cashback)
       if (userId && total > 0) {

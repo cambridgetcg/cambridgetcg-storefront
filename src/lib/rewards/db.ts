@@ -1,6 +1,7 @@
 import { query } from "@/lib/db";
 import { spendPoints, earnPoints, addCredit } from "@/lib/membership/db";
 import type { Raffle, RaffleEntry, MysteryBox, MysteryBoxReward, MysteryBoxOpen } from "./types";
+import { postActivity, awardAchievement } from "@/lib/social/db";
 
 // ══════════════════════════════════════════════════════════════
 // RAFFLES
@@ -119,6 +120,10 @@ export async function drawRaffleWinner(raffleId: string): Promise<{ winner: Raff
     [raffleId, winnerEntry.user_id]
   );
 
+  // Social: activity feed + achievement for winner
+  postActivity(winnerEntry.user_id, "raffle_won", "Won a raffle!").catch(() => {});
+  awardAchievement(winnerEntry.user_id, "raffle_winner").catch(() => {});
+
   return { winner: winnerEntry };
 }
 
@@ -228,6 +233,12 @@ export async function openMysteryBox(boxId: string, userId: string): Promise<{
   // Update counts
   await query(`UPDATE mystery_boxes SET total_opens=total_opens+1, updated_at=NOW() WHERE id=$1`, [boxId]);
   await query(`UPDATE mystery_box_rewards SET awarded_count=awarded_count+1 WHERE id=$1`, [selectedReward.id]);
+
+  // Social: activity feed + legendary achievement
+  postActivity(userId, "mystery_box_opened", "Opened a mystery box").catch(() => {});
+  if (selectedReward.rarity === "legendary") {
+    awardAchievement(userId, "mystery_legendary").catch(() => {});
+  }
 
   // Auto-fulfill points and credit rewards
   if (selectedReward.reward_type === "points") {

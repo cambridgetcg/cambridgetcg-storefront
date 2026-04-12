@@ -17,8 +17,10 @@ export async function GET(request: Request) {
   const profile = await getPublicProfile(targetId);
   if (!profile) return NextResponse.json({ error: "User not found." }, { status: 404 });
 
-  if (!profile.is_public && profile.user_id !== session?.user?.id) {
-    return NextResponse.json({ error: "Profile is private." }, { status: 403 });
+  const isOwn = session?.user?.id === profile.user_id;
+
+  if (!profile.is_public && !isOwn) {
+    return NextResponse.json({ private: true, isOwn: false, profile: { user_id: profile.user_id, username: profile.username, name: profile.name } });
   }
 
   const [showcase, wishlist, activity, achievements] = await Promise.all([
@@ -29,11 +31,11 @@ export async function GET(request: Request) {
   ]);
 
   let following = false;
-  if (session?.user?.id && session.user.id !== profile.user_id) {
+  if (session?.user?.id && !isOwn) {
     following = await isFollowing(session.user.id, profile.user_id);
   }
 
-  return NextResponse.json({ profile, showcase, wishlist, activity, achievements, following });
+  return NextResponse.json({ profile, showcase, wishlist, activity, achievements, following, isOwn, private: false });
 }
 
 // PATCH — update own profile

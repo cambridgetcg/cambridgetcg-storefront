@@ -1,6 +1,7 @@
 import { query } from "@/lib/db";
 import type { MarketOrder, MarketTrade, OrderBookEntry, OrderBookSummary, CardOrderBook } from "./types";
 import { COMMISSION_RATE } from "./types";
+import { postActivity, awardAchievement } from "@/lib/social/db";
 
 // ── Place order + attempt match ──
 
@@ -98,6 +99,29 @@ export async function placeOrder(data: {
     order = { ...order, filled_quantity: newFilled, status: newStatus };
 
     await client.query("COMMIT");
+
+    // Social: activity feed + trade milestones (fire-and-forget after commit)
+    if (trades.length > 0) {
+      for (const trade of trades) {
+        postActivity(trade.buyer_id, "trade_completed", "Completed a P2P trade").catch(() => {});
+        postActivity(trade.seller_id, "trade_completed", "Completed a P2P trade").catch(() => {});
+
+        // Check trade count milestones for buyer and seller
+        for (const tradeUserId of [trade.buyer_id, trade.seller_id]) {
+          query(
+            `SELECT COUNT(*) FROM market_trades WHERE buyer_id = $1 OR seller_id = $1`,
+            [tradeUserId]
+          ).then((res) => {
+            const count = parseInt(res.rows[0].count, 10);
+            if (count === 1) awardAchievement(tradeUserId, "first_trade").catch(() => {});
+            if (count === 10) awardAchievement(tradeUserId, "trades_10").catch(() => {});
+            if (count === 50) awardAchievement(tradeUserId, "trades_50").catch(() => {});
+            if (count === 100) awardAchievement(tradeUserId, "trades_100").catch(() => {});
+          }).catch(() => {});
+        }
+      }
+    }
+
     return { order, trades };
   } catch (err) {
     await client.query("ROLLBACK");

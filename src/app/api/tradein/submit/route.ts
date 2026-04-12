@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { fetchPrices } from "@/lib/wholesale/client";
 import { generateReference, createSubmission } from "@/lib/tradein/db";
 import { sendConfirmationEmail } from "@/lib/tradein/email";
+import { auth } from "@/lib/auth";
+import { awardAchievement } from "@/lib/social/db";
 
 // Simple in-memory rate limiter: max 5 submissions per IP per hour
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -165,6 +167,13 @@ export async function POST(request: Request) {
       expiresAt,
       items: body.items,
     });
+
+    // Social: first trade-in achievement (if user is logged in)
+    auth().then((session) => {
+      if (session?.user?.id) {
+        awardAchievement(session.user.id, "first_tradein").catch(() => {});
+      }
+    }).catch(() => {});
 
     // Send confirmation email (non-blocking — don't fail submission if email fails)
     try {

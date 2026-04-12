@@ -5,6 +5,7 @@ import { getCardOrderBook } from "@/lib/market/db";
 import type { PortfolioCard, ValuatedCard, PortfolioSummary, PortfolioSnapshot, ListingAction } from "./types";
 import { COMMISSION_RATE } from "@/lib/market/types";
 import { SELLER_COMMISSION_RATE } from "@/lib/auction/types";
+import { awardAchievement } from "@/lib/social/db";
 
 // ── CRUD ──
 
@@ -45,6 +46,18 @@ export async function addCard(userId: string, data: {
       [newQty, avgPrice?.toFixed(2) ?? null, data.cardName, data.imageUrl,
        data.setCode, data.setName, data.rarity, card.id]
     );
+
+    // Social: collection milestone achievements
+    query(
+      `SELECT COALESCE(SUM(quantity), 0) as total FROM portfolio_cards WHERE user_id = $1`,
+      [userId]
+    ).then((res) => {
+      const total = parseInt(res.rows[0].total, 10);
+      if (total >= 10) awardAchievement(userId, "collection_10").catch(() => {});
+      if (total >= 50) awardAchievement(userId, "collection_50").catch(() => {});
+      if (total >= 100) awardAchievement(userId, "collection_100").catch(() => {});
+    }).catch(() => {});
+
     return result.rows[0] as PortfolioCard;
   }
 
@@ -58,6 +71,18 @@ export async function addCard(userId: string, data: {
      data.acquisitionPrice?.toFixed(2) ?? null,
      data.acquiredAt || null, data.notes || null]
   );
+
+  // Social: collection milestone achievements
+  query(
+    `SELECT COALESCE(SUM(quantity), 0) as total FROM portfolio_cards WHERE user_id = $1`,
+    [userId]
+  ).then((res) => {
+    const total = parseInt(res.rows[0].total, 10);
+    if (total >= 10) awardAchievement(userId, "collection_10").catch(() => {});
+    if (total >= 50) awardAchievement(userId, "collection_50").catch(() => {});
+    if (total >= 100) awardAchievement(userId, "collection_100").catch(() => {});
+  }).catch(() => {});
+
   return result.rows[0] as PortfolioCard;
 }
 

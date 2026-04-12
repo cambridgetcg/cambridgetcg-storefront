@@ -15,7 +15,10 @@ export async function POST(request: Request) {
   const { portfolioCardId, caption } = await request.json();
   if (!portfolioCardId) return NextResponse.json({ error: "Card ID required." }, { status: 400 });
   await addToShowcase(session.user.id, portfolioCardId, caption);
-  return NextResponse.json({ added: true });
+  // Return updated showcase so frontend can refresh
+  const showcase = await getShowcase(session.user.id);
+  const card = showcase.find(c => c.portfolio_card_id === portfolioCardId) || null;
+  return NextResponse.json({ added: true, card });
 }
 
 export async function DELETE(request: Request) {
