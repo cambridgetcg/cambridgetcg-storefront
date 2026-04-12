@@ -26,24 +26,29 @@ export interface BuylistItem {
 }
 
 export default async function TradeInPage() {
-  const [creditRes, cashRes] = await Promise.all([
-    fetchPrices({ game: "one-piece", channel: "tradein-credit", limit: 2000 }),
-    fetchPrices({ game: "one-piece", channel: "tradein-cash", limit: 2000 }),
+  // Fetch from ALL three channels: main catalog + tradein credit + tradein cash
+  const [catalogRes, creditRes, cashRes] = await Promise.all([
+    fetchPrices({ game: "one-piece", channel: "cambridgetcg", limit: 5000 }),
+    fetchPrices({ game: "one-piece", channel: "tradein-credit", limit: 5000 }),
+    fetchPrices({ game: "one-piece", channel: "tradein-cash", limit: 5000 }),
   ]);
 
-  // Build lookup of cash prices by SKU
-  const cashMap = new Map<string, PriceItem>();
-  for (const item of cashRes.items) {
-    cashMap.set(item.sku, item);
-  }
+  // Build lookups by SKU
+  const creditMap = new Map<string, PriceItem>();
+  for (const item of creditRes.items) creditMap.set(item.sku, item);
 
-  // Merge into buylist
-  const buylist: BuylistItem[] = creditRes.items
-    .map((credit) => {
-      const cash = cashMap.get(credit.sku);
-      const creditPrice = credit.channel_price ?? 0;
+  const cashMap = new Map<string, PriceItem>();
+  for (const item of cashRes.items) cashMap.set(item.sku, item);
+
+  // Use the MAIN CATALOG as source of truth — every card appears
+  // Overlay trade-in prices from credit/cash channels
+  const buylist: BuylistItem[] = catalogRes.items
+    .map((card) => {
+      const credit = creditMap.get(card.sku);
+      const cash = cashMap.get(card.sku);
+      const creditPrice = credit?.channel_price ?? 0;
       const cashPrice = cash?.channel_price ?? 0;
-      const stock = credit.stock ?? 0;
+      const stock = card.stock ?? 0;
 
       // Cash want tiers based on stock
       let cashWant: number;
@@ -55,13 +60,13 @@ export default async function TradeInPage() {
       const creditWant = 999;
 
       return {
-        sku: credit.sku,
-        card_number: credit.card_number,
-        name: credit.name_en || credit.name || credit.card_number,
-        set_code: credit.set_code,
-        set_name: credit.set_name,
-        rarity: credit.rarity,
-        image_url: credit.image_url,
+        sku: card.sku,
+        card_number: card.card_number,
+        name: card.name_en || card.name || card.card_number,
+        set_code: card.set_code,
+        set_name: card.set_name,
+        rarity: card.rarity,
+        image_url: card.image_url,
         cash_price: cashPrice,
         credit_price: creditPrice,
         stock,
