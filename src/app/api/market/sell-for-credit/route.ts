@@ -72,7 +72,7 @@ export async function POST(request: Request) {
   // Record the submission
   await query(
     `INSERT INTO tradein_submissions (reference, status, customer_name, customer_email, payment_method, delivery_method, is_over_18, quoted_cash_total, quoted_credit_total, quote_expires_at)
-     VALUES ($1, 'submitted', $2, $3, 'credit', 'mail', true, '0', $4, NOW() + INTERVAL '7 days')`,
+     VALUES ($1, 'submitted', $2, $3, 'credit', 'mail', true, '0', $4, NOW() + INTERVAL '24 hours')`,
     [reference, session.user.name || "Customer", session.user.email, totalCredit.toFixed(2)]
   );
 
@@ -107,6 +107,6 @@ export async function POST(request: Request) {
     quantity: qty,
     creditPerCard,
     totalCredit,
-    message: `£${totalCredit.toFixed(2)} store credit added to your account. Please send the card(s) to Cambridge TCG within 7 days.`,
+    message: `£${totalCredit.toFixed(2)} store credit added to your account. Please send the card(s) to Cambridge TCG within 24 hours.`,
   });
 }

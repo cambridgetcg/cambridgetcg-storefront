@@ -208,7 +208,7 @@ export async function sendOffer(requestId: number, adminNotes?: string): Promise
   const total = parseFloat(itemsResult.rows[0]?.total || "0");
 
   const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7);
+  expiresAt.setHours(expiresAt.getHours() + 24);
 
   const result = await query(
     `UPDATE quote_requests SET status = 'quoted', quoted_total = $1, offer_expires_at = $2,

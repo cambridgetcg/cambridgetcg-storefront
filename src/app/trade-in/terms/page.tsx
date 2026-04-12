@@ -57,7 +57,7 @@ export default function TradeInTermsPage() {
           <section>
             <h2 className="text-lg font-bold text-white mb-3">Price Lock Guarantee</h2>
             <p>
-              Prices shown on the buylist are indicative. Once your trade-in has been <strong>manually reviewed and a formal quotation issued</strong> by Cambridge TCG, the quoted prices are <strong>locked for 7 days</strong> from the date of quotation. Your cards must arrive within this 7-day window for the quoted prices to be honoured. After 7 days, the quotation expires and prices may be re-evaluated based on current market rates.
+              Prices shown on the buylist are indicative. Once your trade-in has been <strong>manually reviewed and a formal quotation issued</strong> by Cambridge TCG, the quoted prices are <strong>locked for 24 hours</strong> from the date of quotation. Your cards must arrive within this 24-hour window for the quoted prices to be honoured. After 24 hours, the quotation expires and prices may be re-evaluated based on current market rates.
             </p>
           </section>
 

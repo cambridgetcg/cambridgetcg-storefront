@@ -334,7 +334,7 @@ export default function SubmitTradeInPage() {
                 <span className="text-amber-400">{formatPrice(total)}</span>
               </div>
               <p className="text-xs text-neutral-500 mt-1">
-                {items.reduce((s, i) => s + i.quantity, 0)} cards · Quote valid for 7 days
+                {items.reduce((s, i) => s + i.quantity, 0)} cards · Quote locked for 24h after review
               </p>
               {shippingContribution && (
                 <p className="text-sm text-emerald-400 mt-2">

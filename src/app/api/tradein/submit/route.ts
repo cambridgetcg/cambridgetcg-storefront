@@ -146,7 +146,7 @@ export async function POST(request: Request) {
     // Generate reference and expiry
     const reference = await generateReference();
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    expiresAt.setHours(expiresAt.getHours() + 24);
 
     // Insert into DB
     await createSubmission({

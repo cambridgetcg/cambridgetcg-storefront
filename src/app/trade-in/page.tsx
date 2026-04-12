@@ -133,7 +133,7 @@ export default async function TradeInPage() {
               <p className="text-xs text-neutral-400">MINT bonus</p>
             </div>
             <div className="bg-neutral-900 rounded-xl px-5 py-3">
-              <p className="text-2xl font-bold text-amber-400">7 days</p>
+              <p className="text-2xl font-bold text-amber-400">24h</p>
               <p className="text-xs text-neutral-400">Price lock</p>
             </div>
           </div>
