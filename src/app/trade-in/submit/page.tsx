@@ -146,9 +146,9 @@ export default function SubmitTradeInPage() {
                     <p className="text-sm font-medium truncate text-white">{item.name}</p>
                     <p className="text-xs text-neutral-500">{item.card_number}</p>
                     <div className="flex items-center gap-2 mt-2">
-                      <button onClick={() => updateQty(item.sku, item.quantity - 1)} className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition">-</button>
+                      <button onClick={() => updateQty(item.sku, item.quantity - 1)} className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition">-</button>
                       <span className="text-sm font-medium w-5 text-center">{item.quantity}</span>
-                      <button onClick={() => updateQty(item.sku, item.quantity + 1)} className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition">+</button>
+                      <button onClick={() => updateQty(item.sku, item.quantity + 1)} className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition">+</button>
                       <button onClick={() => removeItem(item.sku)} className="ml-auto text-xs text-neutral-500 hover:text-red-400 transition">Remove</button>
                     </div>
                   </div>
@@ -165,7 +165,7 @@ export default function SubmitTradeInPage() {
             {/* Payment method */}
             <div className="bg-neutral-900 rounded-xl p-4 mb-6">
               <h3 className="text-sm font-bold text-white mb-3">Payment Method</h3>
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <label className={`flex-1 cursor-pointer rounded-lg border-2 p-3 text-center transition ${paymentMethod === "credit" ? "border-amber-500 bg-amber-500/10" : "border-neutral-700 hover:border-neutral-600"}`}>
                   <input type="radio" name="payment" value="credit" checked={paymentMethod === "credit"} onChange={() => setPaymentMethod("credit")} className="sr-only" />
                   <p className="text-sm font-bold text-white">Store Credit</p>
@@ -275,7 +275,7 @@ export default function SubmitTradeInPage() {
             {/* Delivery */}
             <div className="space-y-3">
               <h3 className="text-sm font-bold text-white">Delivery Method</h3>
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <label className={`flex-1 cursor-pointer rounded-lg border-2 p-3 transition ${deliveryMethod === "mail" ? "border-amber-500 bg-amber-500/10" : "border-neutral-700 hover:border-neutral-600"}`}>
                   <input type="radio" name="delivery" value="mail" checked={deliveryMethod === "mail"} onChange={() => setDeliveryMethod("mail")} className="sr-only" />
                   <p className="text-sm font-bold text-white">Mail-in</p>

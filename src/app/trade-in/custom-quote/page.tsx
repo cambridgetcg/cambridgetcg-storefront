@@ -263,7 +263,7 @@ export default function CustomQuotePage() {
                 </div>
 
                 {/* Game & Set — side by side */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-neutral-400 mb-1">
                       Game
@@ -300,7 +300,7 @@ export default function CustomQuotePage() {
                 </div>
 
                 {/* Condition & Quantity — side by side */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-neutral-400 mb-1">
                       Condition *

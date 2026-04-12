@@ -144,7 +144,7 @@ export default function QuoteStatusPage() {
         </Link>
 
         {/* Header */}
-        <div className="flex items-start justify-between mb-8">
+        <div className="flex flex-col sm:flex-row items-start justify-between gap-2 mb-8">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-white">
               Quote {data.reference}
@@ -370,13 +370,13 @@ export default function QuoteStatusPage() {
         <div className="flex flex-col sm:flex-row gap-3 mt-8">
           <Link
             href="/trade-in/custom-quote"
-            className="flex-1 text-center px-6 py-3 bg-amber-500 text-black font-bold rounded-lg hover:bg-amber-400 transition"
+            className="flex-1 text-center px-4 sm:px-6 py-3 bg-amber-500 text-black font-bold rounded-lg hover:bg-amber-400 transition"
           >
             Submit Another Quote
           </Link>
           <Link
             href="/trade-in"
-            className="flex-1 text-center px-6 py-3 bg-neutral-800 text-white font-medium rounded-lg hover:bg-neutral-700 transition"
+            className="flex-1 text-center px-4 sm:px-6 py-3 bg-neutral-800 text-white font-medium rounded-lg hover:bg-neutral-700 transition"
           >
             Back to Trade-In
           </Link>

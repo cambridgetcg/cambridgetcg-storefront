@@ -274,14 +274,14 @@ export default function BuylistTable({ buylist }: { buylist: BuylistItem[] }) {
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => updateQty(item.sku, inCart - 1)}
-                              className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
+                              className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
                             >
                               -
                             </button>
                             <span className="text-sm font-medium w-6 text-center">{inCart}</span>
                             <button
                               onClick={() => updateQty(item.sku, inCart + 1)}
-                              className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
+                              className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
                             >
                               +
                             </button>
@@ -363,14 +363,14 @@ export default function BuylistTable({ buylist }: { buylist: BuylistItem[] }) {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => updateQty(item.sku, inCart - 1)}
-                            className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
+                            className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
                           >
                             -
                           </button>
                           <span className="text-sm font-medium w-5 text-center">{inCart}</span>
                           <button
                             onClick={() => updateQty(item.sku, inCart + 1)}
-                            className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
+                            className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
                           >
                             +
                           </button>

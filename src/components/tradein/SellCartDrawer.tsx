@@ -93,14 +93,14 @@ export default function SellCartDrawer() {
                       <div className="flex items-center gap-2 mt-2">
                         <button
                           onClick={() => updateQty(item.sku, item.quantity - 1)}
-                          className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded-lg text-sm font-bold transition"
+                          className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded-lg text-sm font-bold transition"
                         >
                           -
                         </button>
                         <span className="text-sm font-medium w-5 text-center">{item.quantity}</span>
                         <button
                           onClick={() => updateQty(item.sku, item.quantity + 1)}
-                          className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded-lg text-sm font-bold transition"
+                          className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded-lg text-sm font-bold transition"
                         >
                           +
                         </button>

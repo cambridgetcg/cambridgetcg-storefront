@@ -217,7 +217,7 @@ export default function BundleTradeInPage() {
             </p>
 
             {images.length > 0 && (
-              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mb-3">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 mb-3">
                 {images.map((img, i) => (
                   <div key={i} className="relative aspect-square rounded-lg overflow-hidden bg-neutral-800 group">
                     <Image src={img.url} alt={`Photo ${i + 1}`} fill className="object-cover" sizes="100px" />

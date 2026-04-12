@@ -24,7 +24,7 @@ export default function SellCartBar() {
           </div>
           <button
             onClick={openDrawer}
-            className="px-4 sm:px-5 py-2 bg-amber-500 text-black text-sm font-bold rounded-lg hover:bg-amber-400 transition shrink-0"
+            className="px-4 sm:px-5 py-2.5 bg-amber-500 text-black text-sm font-bold rounded-lg hover:bg-amber-400 transition shrink-0"
           >
             Review
           </button>

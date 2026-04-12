@@ -93,7 +93,7 @@ export default async function TradeInPage() {
           <p className="text-neutral-400 mt-3 max-w-xl">
             Get cash or store credit for your trading cards. Competitive prices updated daily.
           </p>
-          <div className="flex flex-wrap gap-4 mt-6">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-4 mt-6">
             <div className="bg-neutral-900 rounded-xl px-5 py-3">
               <p className="text-2xl font-bold text-amber-400">{cardsWanted}</p>
               <p className="text-xs text-neutral-400">Cards wanted</p>
