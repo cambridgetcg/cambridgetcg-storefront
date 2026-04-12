@@ -165,7 +165,17 @@ export default function MarketPage() {
         const res = await fetch("/api/market/catalog?view=sets&game=one-piece");
         if (!res.ok) throw new Error("Failed");
         const data = await res.json();
-        setSets(data.sets ?? []);
+        // Sort: OP sets first (by number), then EB, then ST, then PRB, then P/PROMO
+        const groupOrder: Record<string, number> = { OP: 0, EB: 1, ST: 2, PRB: 3, PCC: 4, P: 5, PROMO: 6, SEALED: 7 };
+        const sorted = (data.sets ?? []).sort((a: SetInfo, b: SetInfo) => {
+          const prefA = a.code.replace(/[0-9-].*/,"");
+          const prefB = b.code.replace(/[0-9-].*/,"");
+          const gA = groupOrder[prefA] ?? 8;
+          const gB = groupOrder[prefB] ?? 8;
+          if (gA !== gB) return gA - gB;
+          return a.code.localeCompare(b.code, undefined, { numeric: true });
+        });
+        setSets(sorted);
       } catch {
         setSets([]);
       } finally {
@@ -293,7 +303,10 @@ export default function MarketPage() {
                       : "text-neutral-300 hover:bg-neutral-800"
                   }`}
                 >
-                  <span className="truncate">{s.name}</span>
+                  <span className="truncate">
+                    <span className="text-neutral-500 font-mono text-xs mr-1.5">{s.code}</span>
+                    {s.name}
+                  </span>
                   <span className="text-[10px] text-neutral-500 ml-2 shrink-0">
                     {s.card_count}
                   </span>
@@ -327,7 +340,7 @@ export default function MarketPage() {
                         : "bg-neutral-800 text-neutral-300"
                     }`}
                   >
-                    {s.name}
+                    {s.code} — {s.name}
                   </button>
                 ))}
               </div>
