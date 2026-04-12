@@ -71,10 +71,10 @@ export default async function TradeInPage() {
     })
     .filter((item) => item.credit_price > 0 || item.cash_price > 0)
     .filter((item) => {
-      // Exclude standard C / UC / R — we only want parallels, alt arts, and premium rarities
-      // Keep anything with /P, /SP, SR, SEC, SP, L, or parallel markers
+      // Exclude only Common (C) and Rare (R) — keep everything else
+      // UC, SR, SEC, SP, L, parallels, alt arts, promos all stay
       const r = (item.rarity ?? "").toUpperCase().trim();
-      const EXCLUDED = new Set(["C", "R", "UC", "-", ""]);
+      const EXCLUDED = new Set(["C", "R", "-", ""]);
       return !EXCLUDED.has(r);
     });
 

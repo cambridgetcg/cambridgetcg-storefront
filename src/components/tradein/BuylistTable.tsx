@@ -152,7 +152,7 @@ export default function BuylistTable({ buylist }: { buylist: BuylistItem[] }) {
           <option value="">All sets</option>
           {sets.map(([code, name]) => (
             <option key={code} value={code}>
-              {name}
+              {code} — {name}
             </option>
           ))}
         </select>
