@@ -155,20 +155,34 @@ export default async function TradeInPage() {
         </div>
       </section>
 
-      {/* Custom quote banner */}
-      <section className="max-w-7xl mx-auto px-4 pt-8">
-        <div className="bg-gradient-to-r from-amber-500/10 to-emerald-500/10 border border-amber-500/20 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      {/* Trade-in options */}
+      <section className="max-w-7xl mx-auto px-4 pt-8 grid gap-4 sm:grid-cols-2">
+        <div className="bg-gradient-to-r from-amber-500/10 to-emerald-500/10 border border-amber-500/20 rounded-xl p-5 flex flex-col justify-between">
           <div>
             <h2 className="text-white font-bold">Have cards not on the buylist?</h2>
             <p className="text-neutral-400 text-sm mt-1">
-              Send us photos of any cards — graded, alt arts, other games, bulk collections. We&apos;ll send you a custom offer.
+              Send us photos of individual cards — graded, alt arts, other games. We&apos;ll send you a custom offer.
             </p>
           </div>
           <Link
             href="/trade-in/custom-quote"
-            className="shrink-0 px-5 py-2.5 bg-amber-500 text-black text-sm font-bold rounded-lg hover:bg-amber-400 transition"
+            className="mt-4 inline-block px-5 py-2.5 bg-amber-500 text-black text-sm font-bold rounded-lg hover:bg-amber-400 transition text-center"
           >
             Request Quote
+          </Link>
+        </div>
+        <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-xl p-5 flex flex-col justify-between">
+          <div>
+            <h2 className="text-white font-bold">Selling a collection or bulk cards?</h2>
+            <p className="text-neutral-400 text-sm mt-1">
+              Complete sets, binders, bulk lots — upload photos of everything and get one offer for the entire bundle.
+            </p>
+          </div>
+          <Link
+            href="/trade-in/bundle"
+            className="mt-4 inline-block px-5 py-2.5 bg-purple-500 text-white text-sm font-bold rounded-lg hover:bg-purple-400 transition text-center"
+          >
+            Sell a Bundle
           </Link>
         </div>
       </section>
