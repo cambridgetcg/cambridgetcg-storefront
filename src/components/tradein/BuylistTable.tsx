@@ -57,7 +57,16 @@ export default function BuylistTable({ buylist }: { buylist: BuylistItem[] }) {
         setMap.set(item.set_code, item.set_name);
       }
     }
-    return Array.from(setMap.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+    // Sort: OP sets first (by number), then EB, then ST, then PRB, then P/PROMO, then rest
+    const groupOrder: Record<string, number> = { OP: 0, EB: 1, ST: 2, PRB: 3, PCC: 4, P: 5, PROMO: 6, SEALED: 7 };
+    return Array.from(setMap.entries()).sort((a, b) => {
+      const prefixA = a[0].replace(/[0-9-].*/,"");
+      const prefixB = b[0].replace(/[0-9-].*/,"");
+      const groupA = groupOrder[prefixA] ?? 8;
+      const groupB = groupOrder[prefixB] ?? 8;
+      if (groupA !== groupB) return groupA - groupB;
+      return a[0].localeCompare(b[0], undefined, { numeric: true });
+    });
   }, [buylist]);
 
   // Filter + sort
