@@ -3,56 +3,48 @@
 import { useState } from "react";
 import { formatPrice } from "@/lib/format";
 import { useToast } from "@/components/ui/Toast";
+import { useCreditSell } from "@/context/CreditSellContext";
 
 export default function SellForCreditButton({
   sku,
   creditAmount,
+  cardName,
+  cardNumber,
+  setCode,
+  imageUrl,
 }: {
   sku: string;
   creditAmount: number;
+  cardName?: string;
+  cardNumber?: string;
+  setCode?: string | null;
+  imageUrl?: string | null;
 }) {
-  const [selling, setSelling] = useState(false);
-  const [done, setDone] = useState(false);
+  const [added, setAdded] = useState(false);
   const { toast } = useToast();
+  const { addItem } = useCreditSell();
 
-  async function handleSell() {
-    setSelling(true);
-    try {
-      const res = await fetch("/api/market/sell-for-credit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sku, quantity: 1 }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (res.status === 401) {
-          window.location.href = "/login";
-          return;
-        }
-        throw new Error(data.error || "Failed to sell");
-      }
-      setDone(true);
-      toast(`${formatPrice(data.totalCredit)} credit added! Ship your card within 7 days.`, "success");
-    } catch (err: any) {
-      toast(err.message || "Failed to sell for credit", "error");
-    } finally {
-      setSelling(false);
-    }
-  }
-
-  if (done) {
-    return (
-      <span className="text-xs text-emerald-400 font-semibold">Credit added!</span>
-    );
+  function handleSell() {
+    addItem({
+      sku,
+      name: cardName || sku,
+      cardNumber: cardNumber || "",
+      setCode: setCode || null,
+      imageUrl: imageUrl || null,
+      creditPrice: creditAmount,
+    });
+    toast("Added to sell cart", "success");
+    setAdded(true);
+    setTimeout(() => setAdded(false), 2000);
   }
 
   return (
     <button
       onClick={handleSell}
-      disabled={selling}
+      disabled={added}
       className="px-3 py-1.5 text-xs font-bold bg-purple-600 text-white rounded-lg hover:bg-purple-500 transition disabled:opacity-50"
     >
-      {selling ? "Selling..." : "Sell Now"}
+      {added ? "Added!" : "Sell Now"}
     </button>
   );
 }

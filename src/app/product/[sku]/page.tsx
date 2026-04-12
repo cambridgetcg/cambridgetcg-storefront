@@ -236,7 +236,7 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
                       <span className="text-xs text-neutral-500 ml-1">&mdash; always available, unlimited</span>
                     </div>
                   </div>
-                  <SellForCreditButton sku={sku} creditAmount={market.tradein_credit!} />
+                  <SellForCreditButton sku={sku} creditAmount={market.tradein_credit!} cardName={cardName} cardNumber={card.card_number} setCode={card.set_code} imageUrl={card.image_url} />
                   <p className="text-[11px] text-neutral-500">
                     Instant store credit. Can only be used at Cambridge TCG.
                   </p>
@@ -331,7 +331,7 @@ export default async function ProductPage({ params }: { params: Promise<{ sku: s
                         <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1 py-0.5 rounded font-semibold">store credit</span>
                         <span className="text-xs text-neutral-500 ml-1">&mdash; always available, unlimited</span>
                       </span>
-                      <SellForCreditButton sku={sku} creditAmount={market.tradein_credit!} />
+                      <SellForCreditButton sku={sku} creditAmount={market.tradein_credit!} cardName={cardName} cardNumber={card.card_number} setCode={card.set_code} imageUrl={card.image_url} />
                     </div>
                   </div>
                 )}

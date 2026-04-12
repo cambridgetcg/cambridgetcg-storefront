@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { formatPrice } from "@/lib/format";
 import { useToast } from "@/components/ui/Toast";
+import { useCreditSell } from "@/context/CreditSellContext";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -110,12 +111,12 @@ export default function MarketPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [setsLoading, setSetsLoading] = useState(true);
-  const [sellingSku, setSellingSku] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const limit = 48;
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
+  const { addItem, totalItems, totalCredit, openDrawer } = useCreditSell();
 
   /* ---- check auth ---- */
   useEffect(() => {
@@ -125,29 +126,23 @@ export default function MarketPage() {
       .catch(() => setLoggedIn(false));
   }, []);
 
-  /* ---- sell for credit handler ---- */
-  async function handleSellForCredit(sku: string, e: React.MouseEvent) {
+  /* ---- add to credit sell cart ---- */
+  function handleAddToSellCart(card: CatalogCard, e: React.MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
     if (loggedIn === false) {
       window.location.href = "/login";
       return;
     }
-    setSellingSku(sku);
-    try {
-      const res = await fetch("/api/market/sell-for-credit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sku, quantity: 1 }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to sell");
-      toast(`${formatPrice(data.totalCredit)} credit added! Ship your card within 7 days.`, "success");
-    } catch (err: any) {
-      toast(err.message || "Failed to sell for credit", "error");
-    } finally {
-      setSellingSku(null);
-    }
+    addItem({
+      sku: card.sku,
+      name: card.name,
+      cardNumber: card.card_number,
+      setCode: card.set_code,
+      imageUrl: card.image_url,
+      creditPrice: card.tradein_credit!,
+    });
+    toast("Added to sell cart", "success");
   }
 
   /* ---- debounced search ---- */
@@ -553,11 +548,10 @@ export default function MarketPage() {
                                   {formatPrice(card.tradein_credit)}
                                 </span>
                                 <button
-                                  onClick={(e) => handleSellForCredit(card.sku, e)}
-                                  disabled={sellingSku === card.sku}
-                                  className="px-2 py-0.5 text-[10px] font-bold bg-purple-600 text-white rounded hover:bg-purple-500 transition disabled:opacity-50"
+                                  onClick={(e) => handleAddToSellCart(card, e)}
+                                  className="px-2 py-0.5 text-[10px] font-bold bg-purple-600 text-white rounded hover:bg-purple-500 transition"
                                 >
-                                  {sellingSku === card.sku ? "..." : "Sell"}
+                                  Sell
                                 </button>
                               </span>
                             ) : (
@@ -668,11 +662,10 @@ export default function MarketPage() {
                             We buy: {formatPrice(card.tradein_credit)}
                           </span>
                           <button
-                            onClick={(e) => handleSellForCredit(card.sku, e)}
-                            disabled={sellingSku === card.sku}
-                            className="text-[10px] font-bold text-purple-300 hover:text-purple-200 underline transition disabled:opacity-50"
+                            onClick={(e) => handleAddToSellCart(card, e)}
+                            className="text-[10px] font-bold text-purple-300 hover:text-purple-200 underline transition"
                           >
-                            {sellingSku === card.sku ? "..." : "Sell"}
+                            Sell
                           </button>
                         </div>
                       )}
@@ -748,6 +741,31 @@ export default function MarketPage() {
           </div>
         </div>
       </div>
+
+      {/* ========== Floating Credit Sell Cart Bar ========== */}
+      {totalItems > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-purple-500/30">
+          <div className="bg-neutral-900/95 backdrop-blur">
+            <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 sm:gap-4 min-w-0 overflow-hidden">
+                <span className="text-sm font-bold text-white shrink-0">
+                  {totalItems} card{totalItems !== 1 ? "s" : ""} to sell
+                </span>
+                <span className="text-xs sm:text-sm text-neutral-400 truncate">
+                  <span className="text-purple-400 font-medium">{formatPrice(totalCredit)}</span>
+                  <span className="ml-1 text-neutral-500">credit</span>
+                </span>
+              </div>
+              <button
+                onClick={openDrawer}
+                className="px-4 sm:px-5 py-2.5 bg-purple-600 text-white text-sm font-bold rounded-lg hover:bg-purple-500 transition shrink-0"
+              >
+                Review Sell Cart
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

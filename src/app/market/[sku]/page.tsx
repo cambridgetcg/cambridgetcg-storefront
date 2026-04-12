@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import { formatPrice } from "@/lib/format";
 import { useToast } from "@/components/ui/Toast";
+import { useCreditSell } from "@/context/CreditSellContext";
 import type { OrderBookEntry, MarketTrade } from "@/lib/market/types";
 import type { UnifiedMarketView } from "@/lib/market/unified";
 import type { EscrowTier } from "@/lib/escrow/service-tiers";
@@ -347,9 +348,9 @@ export default function CardMarketPage() {
 
   // Sell-for-credit state
   const [creditQty, setCreditQty] = useState(1);
-  const [creditSelling, setCreditSelling] = useState(false);
-  const [creditResult, setCreditResult] = useState<{ reference: string; totalCredit: number } | null>(null);
+  const [creditAdded, setCreditAdded] = useState(false);
   const { toast } = useToast();
+  const { addItem, openDrawer, items, updateQty } = useCreditSell();
 
   const pollRef = useRef<ReturnType<typeof setInterval>>(undefined);
 
@@ -421,25 +422,25 @@ export default function CardMarketPage() {
     }
   }
 
-  async function handleSellForCredit() {
-    setCreditSelling(true);
-    setCreditResult(null);
-    try {
-      const res = await fetch("/api/market/sell-for-credit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sku, quantity: creditQty }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to sell for credit");
-      setCreditResult({ reference: data.reference, totalCredit: data.totalCredit });
-      toast(`${formatPrice(data.totalCredit)} credit added to your account!`, "success");
-      fetchBook();
-    } catch (err: any) {
-      toast(err.message || "Failed to sell for credit", "error");
-    } finally {
-      setCreditSelling(false);
+  function handleAddToSellCart() {
+    if (!book) return;
+    const existing = items.find(i => i.sku === sku);
+    const currentQty = existing?.quantity || 0;
+    // Add the item (creates if not exists, increments by 1)
+    addItem({
+      sku,
+      name: book.card_name || sku,
+      cardNumber: book.card_number || "",
+      setCode: book.set_code || null,
+      imageUrl: book.image_url || null,
+      creditPrice: book.tradein_credit!,
+    });
+    // Set the correct total quantity
+    if (creditQty > 1) {
+      updateQty(sku, currentQty + creditQty);
     }
+    toast("Added to sell cart", "success");
+    setCreditAdded(true);
   }
 
   // Spread calculation
@@ -567,7 +568,7 @@ export default function CardMarketPage() {
                         </span>
                       </p>
 
-                      {!creditResult && (
+                      {!creditAdded && (
                         <>
                           {/* Quantity selector */}
                           <div className="flex items-center gap-2 mt-3 mb-3">
@@ -596,42 +597,35 @@ export default function CardMarketPage() {
                             </Link>
                           ) : (
                             <button
-                              onClick={handleSellForCredit}
-                              disabled={creditSelling || loggedIn === null}
+                              onClick={handleAddToSellCart}
+                              disabled={loggedIn === null}
                               className="w-full py-2.5 rounded-lg font-bold text-sm bg-purple-600 text-white hover:bg-purple-500 transition disabled:opacity-50"
                             >
-                              {creditSelling
-                                ? "Processing..."
-                                : `Sell for ${formatPrice(book.tradein_credit * creditQty)} Credit`}
+                              {`Sell for ${formatPrice(book.tradein_credit * creditQty)} Credit`}
                             </button>
                           )}
                         </>
                       )}
 
                       {/* Success state */}
-                      {creditResult && (
+                      {creditAdded && (
                         <div className="mt-3 space-y-2">
-                          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
-                            <p className="text-sm font-semibold text-emerald-400">
-                              {formatPrice(creditResult.totalCredit)} credit added to your account!
-                            </p>
-                            <p className="text-xs text-neutral-400 mt-1">
-                              Reference: {creditResult.reference}
-                            </p>
-                          </div>
-                          <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3">
-                            <p className="text-xs font-semibold text-white mb-1">Shipping instructions</p>
-                            <p className="text-[11px] text-neutral-400 leading-relaxed">
-                              Ship your card(s) within 7 days to Cambridge TCG.
-                              Include your reference number ({creditResult.reference}) with the package.
-                              We will confirm receipt and your credit is already available.
+                          <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3">
+                            <p className="text-sm font-semibold text-purple-400">
+                              Added to sell cart!
                             </p>
                           </div>
                           <button
-                            onClick={() => { setCreditResult(null); setCreditQty(1); }}
+                            onClick={openDrawer}
+                            className="w-full py-2 rounded-lg font-bold text-sm bg-purple-600/20 text-purple-400 border border-purple-500/30 hover:bg-purple-600/30 transition"
+                          >
+                            View Cart
+                          </button>
+                          <button
+                            onClick={() => { setCreditAdded(false); setCreditQty(1); }}
                             className="text-xs text-purple-400 hover:text-purple-300 transition"
                           >
-                            Sell more
+                            Add more
                           </button>
                         </div>
                       )}
