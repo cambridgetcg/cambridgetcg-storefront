@@ -113,7 +113,7 @@ export default async function TradeInPage() {
             Sell Your <span className="text-amber-400">Cards</span>
           </h1>
           <p className="text-neutral-400 mt-3 max-w-xl">
-            Get cash or store credit for your trading cards. Prices are refreshed daily but are subject to change — card markets are volatile and prices can shift even within the same day. Your final payout is based on the quoted price at the time of submission.
+            Get cash or store credit for your trading cards. Prices are refreshed daily but are subject to change — card markets are volatile and prices can shift even within the same day. Your final payout is locked once we review your submission and issue a formal quotation.
           </p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 sm:gap-4 mt-6">
             <div className="bg-neutral-900 rounded-xl px-5 py-3">
