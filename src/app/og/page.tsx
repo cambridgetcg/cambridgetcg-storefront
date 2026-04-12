@@ -56,12 +56,15 @@ export default function OGClaimPage() {
       <main className="min-h-screen bg-neutral-950 flex items-center justify-center">
         <div className="max-w-md px-4 text-center">
           <div className="text-5xl mb-5">👑</div>
-          <h1 className="text-2xl font-bold text-white mb-3">Claim Submitted</h1>
+          <h1 className="text-2xl font-bold text-white mb-3">Thank You, OG</h1>
+          <p className="text-neutral-400 mb-4">
+            Your claim has been submitted. We&apos;ll verify your purchase history and activate your OG status within 1-2 business days.
+          </p>
           <p className="text-neutral-400 mb-6">
-            We&apos;ll verify your purchase history and activate your OG status within 1-2 business days. You&apos;ll receive an email at <span className="text-white font-medium">{email}</span> once confirmed.
+            You&apos;ll receive an email at <span className="text-white font-medium">{email}</span> once confirmed — with all your perks ready to go.
           </p>
           <p className="text-sm text-neutral-500 mb-8">
-            OG status is permanent and cannot be purchased — it&apos;s reserved exclusively for those who were with us from the start.
+            You were here before the hype. That means everything to us.
           </p>
           <Link
             href="/"
@@ -83,9 +86,22 @@ export default function OGClaimPage() {
           <h1 className="text-3xl md:text-4xl font-black text-white">
             Claim Your <span className="text-amber-400">OG Status</span>
           </h1>
-          <p className="text-neutral-400 mt-3 max-w-md mx-auto">
-            You were here from the start. If you&apos;ve ever purchased from Cambridge TCG — on eBay, Cardmarket, our Shopify store, or anywhere else — you qualify for permanent OG membership.
+          <p className="text-neutral-400 mt-4 max-w-lg mx-auto leading-relaxed">
+            You were here at the very start of the journey. When no one was paying attention to One Piece TCG. Before the hype, before the prices, before the mainstream caught on.
           </p>
+          <p className="text-neutral-400 mt-3 max-w-lg mx-auto leading-relaxed">
+            You are the true fans. The true collectors. The ones who stayed through the highs and lows — not for the money, but for the cards, the art, the community.
+          </p>
+          <p className="text-white mt-3 max-w-lg mx-auto leading-relaxed font-medium">
+            We are grateful to have had you from the beginning. You deserve the best, and this is our way of saying thank you.
+          </p>
+        </div>
+
+        {/* Letter */}
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-6 mb-8 text-sm text-neutral-300 leading-relaxed">
+          <p>If you&apos;ve ever purchased from Cambridge TCG — on eBay, Cardmarket, our Shopify store, in person, or anywhere else — you qualify for <strong className="text-amber-400">permanent OG membership</strong>.</p>
+          <p className="mt-3">OG status cannot be bought. It cannot be earned through spending. It is reserved exclusively for those who believed in us and in the One Piece TCG community before anyone else did.</p>
+          <p className="mt-3">This is forever. No subscriptions. No renewals. Just our gratitude, built into your account.</p>
         </div>
 
         {/* What you get */}

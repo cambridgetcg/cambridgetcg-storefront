@@ -62,17 +62,20 @@ export async function POST(request: Request) {
   <div style="max-width:480px;margin:40px auto;padding:32px;background:#171717;border-radius:16px;">
     <h1 style="color:#fff;font-size:20px;margin:0 0 8px;">Cambridge <span style="color:#34d399;">TCG</span></h1>
     <div style="text-align:center;font-size:48px;margin:16px 0;">👑</div>
-    <h2 style="color:#fff;font-size:18px;text-align:center;margin:0 0 16px;">Your OG Status is Active</h2>
-    <p style="color:#a3a3a3;font-size:14px;">Welcome back, OG. Your purchase history has been verified and your permanent OG membership is now active.</p>
+    <h2 style="color:#fff;font-size:18px;text-align:center;margin:0 0 16px;">Welcome Back, OG</h2>
+    <p style="color:#a3a3a3;font-size:14px;">You were here at the very start. When no one was paying attention to One Piece TCG. Before the hype, before the prices. You stayed through the highs and lows — not for the money, but for the cards.</p>
+    <p style="color:#a3a3a3;font-size:14px;margin-top:12px;">We are grateful to have had you from the beginning. Your OG membership is now permanently active. You deserve the best:</p>
     <div style="background:#262626;border-radius:8px;padding:16px;margin:16px 0;font-size:13px;color:#d4d4d4;">
-      <p style="margin:4px 0;">✓ 7% store discount</p>
-      <p style="margin:4px 0;">✓ 7% cashback on cash</p>
+      <p style="margin:4px 0;">✓ 7% store discount on everything</p>
+      <p style="margin:4px 0;">✓ 7% cashback on every purchase</p>
       <p style="margin:4px 0;">✓ 7x points multiplier</p>
-      <p style="margin:4px 0;">✓ 0% marketplace commission</p>
-      <p style="margin:4px 0;">✓ 0% auction fees</p>
+      <p style="margin:4px 0;">✓ 0% marketplace commission — forever</p>
+      <p style="margin:4px 0;">✓ 0% auction fees — forever</p>
+      <p style="margin:4px 0;">✓ 👑 OG badge on your profile</p>
     </div>
-    <a href="https://cambridgetcg.com/login" style="display:inline-block;padding:12px 32px;background:#f59e0b;color:#000;font-weight:700;text-decoration:none;border-radius:8px;font-size:14px;margin-top:8px;">Sign In to Your Account</a>
-    <p style="color:#525252;font-size:12px;margin:24px 0 0;">You were here from the start. Thank you.</p>
+    <p style="color:#a3a3a3;font-size:14px;">No subscription. No renewal. This is permanent — our thank you to you.</p>
+    <a href="https://cambridgetcg.com/login" style="display:inline-block;padding:12px 32px;background:#f59e0b;color:#000;font-weight:700;text-decoration:none;border-radius:8px;font-size:14px;margin-top:16px;">Sign In to Your Account</a>
+    <p style="color:#737373;font-size:12px;margin:24px 0 0;font-style:italic;">You were here before the hype. That means everything to us.</p>
   </div>
 </body></html>`,
               },
