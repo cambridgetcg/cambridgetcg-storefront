@@ -161,12 +161,12 @@ export default async function TradeInPage() {
       </section>
 
       {/* Trade-in options */}
-      <section className="max-w-7xl mx-auto px-4 pt-8 grid gap-4 sm:grid-cols-2">
+      <section className="max-w-7xl mx-auto px-4 pt-8 grid gap-4 sm:grid-cols-3">
         <div className="bg-gradient-to-r from-amber-500/10 to-emerald-500/10 border border-amber-500/20 rounded-xl p-5 flex flex-col justify-between">
           <div>
-            <h2 className="text-white font-bold">Have cards not on the buylist?</h2>
+            <h2 className="text-white font-bold">Cards not on the buylist?</h2>
             <p className="text-neutral-400 text-sm mt-1">
-              Send us photos of individual cards — graded, alt arts, other games. We&apos;ll send you a custom offer.
+              Send us photos of individual cards — graded, alt arts, other games.
             </p>
           </div>
           <Link
@@ -178,9 +178,9 @@ export default async function TradeInPage() {
         </div>
         <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-xl p-5 flex flex-col justify-between">
           <div>
-            <h2 className="text-white font-bold">Selling a collection or bulk cards?</h2>
+            <h2 className="text-white font-bold">Selling a collection?</h2>
             <p className="text-neutral-400 text-sm mt-1">
-              Complete sets, binders, bulk lots — upload photos of everything and get one offer for the entire bundle.
+              Complete sets, binders, mixed lots — one offer for the entire bundle.
             </p>
           </div>
           <Link
@@ -188,6 +188,20 @@ export default async function TradeInPage() {
             className="mt-4 inline-block px-5 py-2.5 bg-purple-500 text-white text-sm font-bold rounded-lg hover:bg-purple-400 transition text-center"
           >
             Sell a Bundle
+          </Link>
+        </div>
+        <div className="bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 rounded-xl p-5 flex flex-col justify-between">
+          <div>
+            <h2 className="text-white font-bold">Got bulk commons &amp; rares?</h2>
+            <p className="text-neutral-400 text-sm mt-1">
+              We buy C, UC, and R cards at 2p each. No sorting needed — just count and send.
+            </p>
+          </div>
+          <Link
+            href="/trade-in/bulk"
+            className="mt-4 inline-block px-5 py-2.5 bg-emerald-500 text-black text-sm font-bold rounded-lg hover:bg-emerald-400 transition text-center"
+          >
+            Sell Bulk Cards
           </Link>
         </div>
       </section>

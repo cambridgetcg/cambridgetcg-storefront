@@ -26,6 +26,18 @@ export default function TradeInTermsPage() {
           </section>
 
           <section>
+            <h2 className="text-lg font-bold text-white mb-3">Bulk Card Trade-In</h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li><strong className="text-emerald-400">Base rate:</strong> <strong>2p per card</strong> for all Common (C), Uncommon (UC), and Rare (R) cards. No sorting required — just count and send.</li>
+              <li><strong className="text-amber-400">Valuable finds:</strong> If we identify cards in your bulk that are worth significantly more than 2p (tournament staples, alt art rares, valuable uncommons), we will pay <strong>85% of market value</strong> for those cards instead of the base rate. This amount is credited separately on top of your base payout.</li>
+              <li>Minimum submission: <strong>50 cards</strong>.</li>
+              <li>Bulk payouts are issued in <strong>store credit</strong>.</li>
+              <li>Cards should be in playable condition (no heavily damaged or water-damaged cards).</li>
+              <li>The identification and valuation of any &quot;gems&quot; within your bulk is at the sole discretion of Cambridge TCG.</li>
+            </ul>
+          </section>
+
+          <section>
             <h2 className="text-lg font-bold text-white mb-3">Card Condition</h2>
             <p>
               All cards submitted should be in <strong>Near Mint (NM)</strong> or better condition. This means
