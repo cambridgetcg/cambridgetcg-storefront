@@ -74,14 +74,23 @@ export async function GET(request: Request) {
   }
 
   // Fetch trade-in credit prices (CTCG standing bids)
-  const tradeinData = await fetchPrices({
-    game, set, limit: 2000, channel: "tradein-credit",
-  }).catch(() => ({ items: [] }));
-
+  // Must paginate — API caps at 500 per request
   const tradeinMap = new Map<string, number>();
-  for (const item of tradeinData.items) {
-    if (item.channel_price && item.channel_price > 0) {
-      tradeinMap.set(item.sku, item.channel_price);
+  {
+    let tradeinOffset = 0;
+    let tradeinTotal = Infinity;
+    while (tradeinOffset < tradeinTotal) {
+      const tradeinPage = await fetchPrices({
+        game, set, limit: 500, offset: tradeinOffset, channel: "tradein-credit",
+      }).catch(() => ({ items: [], total: 0 }));
+      for (const item of tradeinPage.items) {
+        if (item.channel_price && item.channel_price > 0) {
+          tradeinMap.set(item.sku, item.channel_price);
+        }
+      }
+      tradeinTotal = tradeinPage.total;
+      tradeinOffset += 500;
+      if (tradeinPage.items.length < 500) break;
     }
   }
 
