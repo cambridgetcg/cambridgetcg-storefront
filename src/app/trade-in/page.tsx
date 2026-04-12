@@ -94,10 +94,9 @@ export default async function TradeInPage() {
     })
     .filter((item) => item.credit_price > 0 || item.cash_price > 0)
     .filter((item) => {
-      // Exclude only Common (C) and Rare (R) — keep everything else
-      // UC, SR, SEC, SP, L, parallels, alt arts, promos all stay
+      // Exclude C, UC, and R — keep SR, SEC, SP, L, parallels, alt arts, promos
       const r = (item.rarity ?? "").toUpperCase().trim();
-      const EXCLUDED = new Set(["C", "R", "-", ""]);
+      const EXCLUDED = new Set(["C", "UC", "R", "-", ""]);
       return !EXCLUDED.has(r);
     });
 
