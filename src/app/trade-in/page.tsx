@@ -25,24 +25,42 @@ export interface BuylistItem {
   credit_want: number;
 }
 
+// Fetch all pages from the wholesale API (it caps at 500 per request)
+async function fetchAllPrices(params: Parameters<typeof fetchPrices>[0]) {
+  const allItems: PriceItem[] = [];
+  let offset = 0;
+  const pageSize = 500;
+  let total = Infinity;
+
+  while (offset < total) {
+    const res = await fetchPrices({ ...params, limit: pageSize, offset });
+    allItems.push(...res.items);
+    total = res.total;
+    offset += pageSize;
+    if (res.items.length < pageSize) break; // No more pages
+  }
+
+  return allItems;
+}
+
 export default async function TradeInPage() {
-  // Fetch from ALL three channels: main catalog + tradein credit + tradein cash
-  const [catalogRes, creditRes, cashRes] = await Promise.all([
-    fetchPrices({ game: "one-piece", channel: "cambridgetcg", limit: 5000 }),
-    fetchPrices({ game: "one-piece", channel: "tradein-credit", limit: 5000 }),
-    fetchPrices({ game: "one-piece", channel: "tradein-cash", limit: 5000 }),
+  // Fetch from ALL three channels, paginated to get every card
+  const [catalogItems, creditItems, cashItems] = await Promise.all([
+    fetchAllPrices({ game: "one-piece", channel: "cambridgetcg" }),
+    fetchAllPrices({ game: "one-piece", channel: "tradein-credit" }),
+    fetchAllPrices({ game: "one-piece", channel: "tradein-cash" }),
   ]);
 
   // Build lookups by SKU
   const creditMap = new Map<string, PriceItem>();
-  for (const item of creditRes.items) creditMap.set(item.sku, item);
+  for (const item of creditItems) creditMap.set(item.sku, item);
 
   const cashMap = new Map<string, PriceItem>();
-  for (const item of cashRes.items) cashMap.set(item.sku, item);
+  for (const item of cashItems) cashMap.set(item.sku, item);
 
   // Use the MAIN CATALOG as source of truth — every card appears
   // Overlay trade-in prices from credit/cash channels
-  const buylist: BuylistItem[] = catalogRes.items
+  const buylist: BuylistItem[] = catalogItems
     .map((card) => {
       const credit = creditMap.get(card.sku);
       const cash = cashMap.get(card.sku);
