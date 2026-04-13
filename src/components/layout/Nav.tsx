@@ -7,14 +7,13 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
 const NAV_LINKS = [
-  { href: "/catalog?game=one-piece", label: "One Piece" },
-  { href: "/catalog", label: "Catalog" },
-  { href: "/auctions", label: "Auctions" },
+  { href: "/catalog", label: "Shop" },
   { href: "/market", label: "Market" },
+  { href: "/trade-in", label: "Sell" },
+  { href: "/auctions", label: "Auctions" },
   { href: "/rewards", label: "Rewards" },
+  { href: "/deck-builder", label: "Decks" },
   { href: "/community", label: "Community" },
-  { href: "/trade-in", label: "Trade In" },
-  { href: "/about", label: "About" },
 ];
 
 export default function Nav() {
