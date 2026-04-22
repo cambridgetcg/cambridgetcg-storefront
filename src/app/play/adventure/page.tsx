@@ -454,7 +454,7 @@ export default function AdventureModePage() {
                             First clear: {level.first_clear_points} pts
                             {level.first_clear_credit > 0 && (
                               <span className="text-green-400 ml-1">
-                                + &pound;{(level.first_clear_credit / 100).toFixed(2)} store credit
+                                + &pound;{Number(level.first_clear_credit).toFixed(2)} store credit
                               </span>
                             )}
                           </span>

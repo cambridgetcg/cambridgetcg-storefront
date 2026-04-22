@@ -1026,7 +1026,7 @@ export default function PVEGameBoard() {
               {victoryResult.creditEarned > 0 && (
                 <div className="flex items-center justify-center gap-2 text-lg">
                   <span>&#128176;</span>
-                  <span className="text-green-400 font-bold">+&pound;{(victoryResult.creditEarned / 100).toFixed(2)} store credit</span>
+                  <span className="text-green-400 font-bold">+&pound;{Number(victoryResult.creditEarned).toFixed(2)} store credit</span>
                 </div>
               )}
             </div>
