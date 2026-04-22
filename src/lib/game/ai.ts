@@ -91,32 +91,48 @@ export function aiTurn(state: GameState, aiPlayer: "player1" | "player2", aggres
   }
 
   // Attack phase — based on aggression
+  // Note: we track simulated rested state locally so the AI doesn't double-attack
+  // with the same card in one turn (actual rest is applied by the attack action).
   const canAttack = [ai.leader, ...ai.field].filter(c => c && !c.isRested) as GameCard[];
+  const attackedIds = new Set<string>();
+
+  // Lethal check — if opponent is at 0 life, always swing the leader for the kill.
+  const lethalAvailable = opponent.life.length === 0;
 
   for (const attacker of canAttack) {
-    // Decide whether to attack based on aggression
-    if (Math.random() > aggression) continue;
+    if (attackedIds.has(attacker.id)) continue;
+    // Always attack when lethal is available; otherwise gate by aggression.
+    if (!lethalAvailable && Math.random() > aggression) continue;
 
-    // Target selection
-    // Prefer attacking rested opponent characters, then leader
+    // Target: prefer KOing rested opponent characters; otherwise go for leader.
     const restedOpponents = opponent.field.filter(c => c.isRested);
-    const target = restedOpponents.length > 0 && Math.random() > 0.5
-      ? "rested_character"
-      : "leader";
+    const goForCharacter = !lethalAvailable
+      && restedOpponents.length > 0
+      && Math.random() < 0.4;
 
-    // Rest the attacker
-    actions.push({
-      type: "toggle_rest", playerId: aiId,
-      data: { cardId: attacker.id },
-      timestamp: new Date().toISOString()
-    });
+    const targetChar = goForCharacter ? restedOpponents[0] : null;
 
-    if (target === "leader") {
-      thoughts.push(`${attacker.name} attacks opponent's leader!`);
-      // Opponent takes damage (in manual mode, the human player handles this)
+    if (targetChar) {
+      actions.push({
+        type: "attack", playerId: aiId,
+        data: { attackerId: attacker.id, targetType: "character", targetId: targetChar.id },
+        timestamp: new Date().toISOString()
+      });
+      thoughts.push(`${attacker.name} attacks ${targetChar.name}!`);
     } else {
-      thoughts.push(`${attacker.name} attacks a rested character!`);
+      actions.push({
+        type: "attack", playerId: aiId,
+        data: { attackerId: attacker.id, targetType: "leader" },
+        timestamp: new Date().toISOString()
+      });
+      thoughts.push(`${attacker.name} attacks opponent's leader!`);
+      if (lethalAvailable) {
+        // If this swing ends the game, stop the AI from queueing further actions.
+        attackedIds.add(attacker.id);
+        break;
+      }
     }
+    attackedIds.add(attacker.id);
   }
 
   // End turn

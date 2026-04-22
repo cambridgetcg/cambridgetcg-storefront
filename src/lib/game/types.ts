@@ -52,6 +52,7 @@ export interface GameState {
   turnNumber: number;
   phase: GamePhase;
   firstPlayer: string;
+  winner?: string;          // userId of winner when phase === "finished"
 }
 
 export type GamePhase = "setup" | "refresh" | "draw" | "don" | "main" | "end" | "counter" | "finished";

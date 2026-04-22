@@ -12,6 +12,7 @@ import type {
   GameAction,
 } from "@/lib/game/types";
 import { PHASE_LABELS } from "@/lib/game/types";
+import { applyAction } from "@/lib/game/reducer";
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -252,7 +253,7 @@ export default function PVEGameBoard() {
 
     try {
       // Apply action locally on the state (client-side for responsiveness)
-      const newState = applyLocalAction(state, "player1", type, data);
+      const newState = applyAction(state, "player1", type, data);
       setState(newState);
       addLog(formatActionText(type, data), false);
 
@@ -280,7 +281,7 @@ export default function PVEGameBoard() {
     if (!state || !gameId) return;
 
     // End player turn
-    const newState = applyLocalAction(state, "player1", "end_turn", {});
+    const newState = applyAction(state, "player1", "end_turn", {});
     setState(newState);
     addLog("You ended your turn.", false);
 
@@ -308,9 +309,11 @@ export default function PVEGameBoard() {
         for (let i = 0; i < result.actions.length; i++) {
           const action = result.actions[i];
           await new Promise(resolve => setTimeout(resolve, AI_ACTION_DELAY_MS));
-          currentState = applyLocalAction(currentState, "player2", action.type, action.data);
+          currentState = applyAction(currentState, "player2", action.type, action.data);
           setState({ ...currentState });
           addLog(`${opponent?.name ?? "AI"}: ${formatActionText(action.type, action.data)}`, true);
+          // If an AI attack ended the game, stop queued actions immediately.
+          if (currentState.phase === "finished") break;
         }
 
         replayingRef.current = false;
@@ -375,125 +378,31 @@ export default function PVEGameBoard() {
   }
 
   /* ================================================================ */
-  /*  Local State Engine (mirrors server logic for responsiveness)     */
+  /*  Auto finalize when state.phase flips to "finished"              */
   /* ================================================================ */
 
-  function applyLocalAction(
-    currentState: GameState,
-    playerKey: "player1" | "player2",
-    type: string,
-    data: Record<string, unknown>
-  ): GameState {
-    const s = JSON.parse(JSON.stringify(currentState)) as GameState;
-    const player = s[playerKey];
-    const opponentPlayer = playerKey === "player1" ? s.player2 : s.player1;
+  const finalizedRef = useRef(false);
 
-    switch (type) {
-      case "move_card": {
-        const { cardId, toZone, faceDown } = data as { cardId: string; toZone: string; faceDown?: boolean };
-        const allCards = [...player.hand, ...player.field, player.leader, player.stage, ...player.life, ...player.trash, ...player.deck].filter(Boolean) as GameCard[];
-        const card = allCards.find(c => c.id === cardId);
-        if (!card) break;
+  useEffect(() => {
+    if (!state || !gameId) return;
+    if (state.phase !== "finished") return;
+    if (finalizedRef.current) return;
+    finalizedRef.current = true;
 
-        const removeFrom = (zone: GameCard[]) => zone.filter(c => c.id !== cardId);
-        player.hand = removeFrom(player.hand);
-        player.field = removeFrom(player.field);
-        player.life = removeFrom(player.life);
-        player.trash = removeFrom(player.trash);
-        player.deck = removeFrom(player.deck);
-        if (player.leader?.id === cardId) player.leader = null;
-        if (player.stage?.id === cardId) player.stage = null;
+    const youWon = state.winner && state.winner === state.player1.userId;
 
-        card.zone = toZone as GameCard["zone"];
-        card.faceDown = faceDown ?? false;
-        if (toZone === "field") player.field.push(card);
-        else if (toZone === "hand") { card.faceDown = false; player.hand.push(card); }
-        else if (toZone === "trash") { card.faceDown = false; player.trash.push(card); }
-        else if (toZone === "life") { card.faceDown = true; player.life.push(card); }
-        else if (toZone === "stage") player.stage = card;
-        else if (toZone === "leader") player.leader = card;
-        break;
-      }
-      case "toggle_rest": {
-        const { cardId } = data as { cardId: string };
-        const cards = [player.leader, ...player.field, player.stage].filter(Boolean) as GameCard[];
-        const card = cards.find(c => c.id === cardId);
-        if (card) card.isRested = !card.isRested;
-        break;
-      }
-      case "attach_don": {
-        const { cardId } = data as { cardId: string };
-        if (player.donActive <= 0) break;
-        const cards = [player.leader, ...player.field].filter(Boolean) as GameCard[];
-        const card = cards.find(c => c.id === cardId);
-        if (card) { card.attachedDon++; player.donActive--; }
-        break;
-      }
-      case "detach_don": {
-        const { cardId } = data as { cardId: string };
-        const cards = [player.leader, ...player.field].filter(Boolean) as GameCard[];
-        const card = cards.find(c => c.id === cardId);
-        if (card && card.attachedDon > 0) { card.attachedDon--; player.donActive++; }
-        break;
-      }
-      case "rest_don": {
-        const { count } = data as { count: number };
-        const toRest = Math.min(count, player.donActive);
-        player.donActive -= toRest;
-        player.donRested += toRest;
-        break;
-      }
-      case "refresh_all": {
-        if (player.leader) player.leader.isRested = false;
-        player.field.forEach(c => c.isRested = false);
-        if (player.stage) player.stage.isRested = false;
-        player.donActive += player.donRested;
-        player.donRested = 0;
-        break;
-      }
-      case "draw_card": {
-        if (player.deck.length === 0) break;
-        const card = player.deck.shift()!;
-        card.zone = "hand";
-        card.faceDown = false;
-        player.hand.push(card);
-        break;
-      }
-      case "add_don": {
-        const count = (s.turnNumber === 1 && s.firstPlayer === player.userId) ? 1 : 2;
-        const toAdd = Math.min(count, player.donDeck);
-        player.donDeck -= toAdd;
-        player.donActive += toAdd;
-        break;
-      }
-      case "take_damage": {
-        if (player.life.length === 0) break;
-        const lifeCard = player.life.shift()!;
-        lifeCard.zone = "hand";
-        lifeCard.faceDown = false;
-        player.hand.push(lifeCard);
-        player.lifeCount = player.life.length;
-        break;
-      }
-      case "next_phase": {
-        const phases: GamePhase[] = ["refresh", "draw", "don", "main", "end"];
-        const idx = phases.indexOf(s.phase as GamePhase);
-        if (idx >= 0 && idx < phases.length - 1) {
-          s.phase = phases[idx + 1];
-        }
-        break;
-      }
-      case "end_turn": {
-        s.currentTurn = s.currentTurn === s.player1.userId ? s.player2.userId : s.player1.userId;
-        s.turnNumber++;
-        s.phase = "refresh";
-        break;
-      }
+    if (youWon) {
+      addLog("You defeated your opponent!", false);
+      handleClaimVictory();
+    } else {
+      addLog("You were defeated.", true);
+      handleConcede();
     }
+    // handleClaimVictory/handleConcede close over current state; running once
+    // on the finished transition is sufficient.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state?.phase, state?.winner, gameId]);
 
-    s[playerKey] = player;
-    return s;
-  }
 
   /* ================================================================ */
   /*  Format action text                                              */
@@ -510,6 +419,10 @@ export default function PVEGameBoard() {
       case "draw_card": return "drew a card";
       case "add_don": return "added DON!! from deck";
       case "take_damage": return "took damage (life to hand)";
+      case "attack":
+        return data.targetType === "leader"
+          ? "attacks the leader!"
+          : "attacks a character!";
       case "next_phase": return "advanced to next phase";
       case "end_turn": return "ended turn";
       default: return type;
@@ -682,9 +595,24 @@ export default function PVEGameBoard() {
 
     const actions: { label: string; action: () => void; variant?: "danger" }[] = [];
 
+    const canAttack = (zone === "leader" || zone === "field") && !card.isRested && isMyTurn;
+    const restedOppChars = oppState?.field.filter(c => c.isRested) ?? [];
+
     if (zone === "hand") {
       actions.push({ label: "Play to Field", action: () => sendAction("move_card", { cardId: card.id, toZone: "field", faceDown: false }) });
       actions.push({ label: "Play as Stage", action: () => sendAction("move_card", { cardId: card.id, toZone: "stage", faceDown: false }) });
+    }
+    if (canAttack) {
+      actions.push({
+        label: "⚔ Attack Opponent Leader",
+        action: () => sendAction("attack", { attackerId: card.id, targetType: "leader" }),
+      });
+      for (const target of restedOppChars) {
+        actions.push({
+          label: `⚔ Attack ${target.name}`,
+          action: () => sendAction("attack", { attackerId: card.id, targetType: "character", targetId: target.id }),
+        });
+      }
     }
     if (zone === "field") {
       actions.push({ label: card.isRested ? "Set Active" : "Rest", action: () => sendAction("toggle_rest", { cardId: card.id }) });

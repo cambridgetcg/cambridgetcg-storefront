@@ -1,7 +1,8 @@
 // OPTCG Game Engine — manages game state, turns, and actions
 
 import { query } from "@/lib/db";
-import type { GameState, PlayerState, GameCard, GameAction, GamePhase } from "./types";
+import type { GameState, PlayerState, GameCard, GameAction } from "./types";
+import { applyAction } from "./reducer";
 import crypto from "crypto";
 
 // ── Room Management ──
@@ -143,152 +144,34 @@ export async function performAction(roomCode: string, userId: string, action: Ga
   const room = await getRoom(roomCode);
   if (!room || room.status !== "playing") return { error: "Game not active." };
 
-  const state: GameState = room.game_state;
-  if (!state.player1 || !state.player2) return { error: "Game not initialized." };
+  const currentState: GameState = room.game_state;
+  if (!currentState.player1 || !currentState.player2) return { error: "Game not initialized." };
 
-  const isP1 = state.player1.userId === userId;
-  const isP2 = state.player2.userId === userId;
+  const isP1 = currentState.player1.userId === userId;
+  const isP2 = currentState.player2.userId === userId;
   if (!isP1 && !isP2) return { error: "You're not in this game." };
 
-  const player = isP1 ? state.player1 : state.player2;
-  const opponent = isP1 ? state.player2 : state.player1;
-
-  // Process action
-  switch (action.type) {
-    case "move_card": {
-      const { cardId, toZone, faceDown } = action.data as { cardId: string; toZone: string; faceDown?: boolean };
-      // Find card in any zone
-      const allCards = [...player.hand, ...player.field, player.leader, player.stage, ...player.life, ...player.trash, ...player.deck].filter(Boolean) as GameCard[];
-      const card = allCards.find(c => c.id === cardId);
-      if (!card) break;
-
-      // Remove from current zone
-      const removeFrom = (zone: GameCard[]) => zone.filter(c => c.id !== cardId);
-      player.hand = removeFrom(player.hand);
-      player.field = removeFrom(player.field);
-      player.life = removeFrom(player.life);
-      player.trash = removeFrom(player.trash);
-      player.deck = removeFrom(player.deck);
-      if (player.leader?.id === cardId) player.leader = null;
-      if (player.stage?.id === cardId) player.stage = null;
-
-      // Add to target zone
-      card.zone = toZone as GameCard["zone"];
-      card.faceDown = faceDown ?? false;
-      if (toZone === "field") player.field.push(card);
-      else if (toZone === "hand") { card.faceDown = false; player.hand.push(card); }
-      else if (toZone === "trash") { card.faceDown = false; player.trash.push(card); }
-      else if (toZone === "life") { card.faceDown = true; player.life.push(card); }
-      else if (toZone === "stage") player.stage = card;
-      else if (toZone === "leader") player.leader = card;
-      break;
-    }
-
-    case "toggle_rest": {
-      const { cardId } = action.data as { cardId: string };
-      const allCards = [player.leader, ...player.field, player.stage].filter(Boolean) as GameCard[];
-      const card = allCards.find(c => c.id === cardId);
-      if (card) card.isRested = !card.isRested;
-      break;
-    }
-
-    case "attach_don": {
-      const { cardId } = action.data as { cardId: string };
-      if (player.donActive <= 0) break;
-      const allCards = [player.leader, ...player.field].filter(Boolean) as GameCard[];
-      const card = allCards.find(c => c.id === cardId);
-      if (card) { card.attachedDon++; player.donActive--; }
-      break;
-    }
-
-    case "detach_don": {
-      const { cardId } = action.data as { cardId: string };
-      const allCards = [player.leader, ...player.field].filter(Boolean) as GameCard[];
-      const card = allCards.find(c => c.id === cardId);
-      if (card && card.attachedDon > 0) { card.attachedDon--; player.donActive++; }
-      break;
-    }
-
-    case "rest_don": {
-      const { count } = action.data as { count: number };
-      const toRest = Math.min(count, player.donActive);
-      player.donActive -= toRest;
-      player.donRested += toRest;
-      break;
-    }
-
-    case "refresh_all": {
-      // Untap all cards
-      if (player.leader) player.leader.isRested = false;
-      player.field.forEach(c => c.isRested = false);
-      if (player.stage) player.stage.isRested = false;
-      // Unrest all DON!!
-      player.donActive += player.donRested;
-      player.donRested = 0;
-      break;
-    }
-
-    case "draw_card": {
-      if (player.deck.length === 0) break;
-      const card = player.deck.shift()!;
-      card.zone = "hand";
-      card.faceDown = false;
-      player.hand.push(card);
-      break;
-    }
-
-    case "add_don": {
-      const count = (state.turnNumber === 1 && state.firstPlayer === userId) ? 1 : 2;
-      const toAdd = Math.min(count, player.donDeck);
-      player.donDeck -= toAdd;
-      player.donActive += toAdd;
-      break;
-    }
-
-    case "take_damage": {
-      // Top life card goes to hand
-      if (player.life.length === 0) break;
-      const lifeCard = player.life.shift()!;
-      lifeCard.zone = "hand";
-      lifeCard.faceDown = false;
-      player.hand.push(lifeCard);
-      player.lifeCount = player.life.length;
-      break;
-    }
-
-    case "next_phase": {
-      const phases: GamePhase[] = ["refresh", "draw", "don", "main", "end"];
-      const idx = phases.indexOf(state.phase as GamePhase);
-      if (idx >= 0 && idx < phases.length - 1) {
-        state.phase = phases[idx + 1];
-      }
-      break;
-    }
-
-    case "end_turn": {
-      state.currentTurn = state.currentTurn === state.player1.userId ? state.player2.userId : state.player1.userId;
-      state.turnNumber++;
-      state.phase = "refresh";
-      break;
-    }
-
-    case "concede": {
-      await query(
-        `UPDATE game_rooms SET status='finished', game_state=$2, ended_at=NOW(), last_action_at=NOW() WHERE code=$1`,
-        [roomCode, JSON.stringify(state)]
-      );
-      return { state, conceded: userId };
-    }
-
-    case "chat": {
-      // Chat is handled via game_log only
-      break;
-    }
+  // Concede shortcuts the normal reducer flow because it ends the game.
+  if (action.type === "concede") {
+    await query(
+      `UPDATE game_rooms SET status='finished', game_state=$2, ended_at=NOW(), last_action_at=NOW() WHERE code=$1`,
+      [roomCode, JSON.stringify(currentState)],
+    );
+    return { state: currentState, conceded: userId };
   }
 
-  // Update player state back
-  if (isP1) state.player1 = player;
-  else state.player2 = player;
+  // Chat is log-only — no state mutation.
+  if (action.type === "chat") {
+    const log = room.game_log || [];
+    log.push({ ...action, timestamp: new Date().toISOString() });
+    await query(
+      `UPDATE game_rooms SET game_log=$2, last_action_at=NOW() WHERE code=$1`,
+      [roomCode, JSON.stringify(log)],
+    );
+    return { state: currentState };
+  }
+
+  const state = applyAction(currentState, isP1 ? "player1" : "player2", action.type, action.data);
 
   // Save action to log
   const log = room.game_log || [];
@@ -297,7 +180,7 @@ export async function performAction(roomCode: string, userId: string, action: Ga
   // Save state
   await query(
     `UPDATE game_rooms SET game_state=$2, game_log=$3, turn_number=$4, phase=$5, last_action_at=NOW() WHERE code=$1`,
-    [roomCode, JSON.stringify(state), JSON.stringify(log), state.turnNumber, state.phase]
+    [roomCode, JSON.stringify(state), JSON.stringify(log), state.turnNumber, state.phase],
   );
 
   return { state };
