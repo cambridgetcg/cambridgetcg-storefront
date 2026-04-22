@@ -18,30 +18,33 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id } = await params;
-  const { amount } = await request.json();
+  const { amount, is_best_offer } = await request.json();
+  const isBestOffer = !!is_best_offer;
 
   if (!amount || typeof amount !== "number" || amount <= 0) {
     return NextResponse.json({ error: "Invalid bid amount." }, { status: 400 });
   }
 
   try {
-    // Get previous high bidder before placing new bid (for outbid notification)
-    const prevHigh = await query(
-      `SELECT b.user_id, u.email FROM auction_bids b
-       JOIN users u ON b.user_id = u.id
-       WHERE b.auction_id = $1 AND b.status = 'active'
-       ORDER BY b.amount DESC LIMIT 1`,
-      [id]
-    );
+    // Look up previous high bidder for the outbid email — only relevant for regular bids,
+    // and only counts other regular bids (best offers don't compete for the price).
+    const prevHigh = isBestOffer
+      ? { rows: [] as { user_id: string; email: string }[] }
+      : await query(
+          `SELECT b.user_id, u.email FROM auction_bids b
+           JOIN users u ON b.user_id = u.id
+           WHERE b.auction_id = $1 AND b.status = 'active' AND b.is_best_offer = false
+           ORDER BY b.amount DESC LIMIT 1`,
+          [id]
+        );
 
-    const result = await placeBid(id, session.user.id, amount);
+    const result = await placeBid(id, session.user.id, amount, isBestOffer);
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
 
-    // Send outbid email to previous high bidder (non-blocking)
-    if (prevHigh.rows.length > 0 && prevHigh.rows[0].user_id !== session.user.id) {
+    if (!isBestOffer && prevHigh.rows.length > 0 && prevHigh.rows[0].user_id !== session.user.id) {
       const auctionResult = await query(`SELECT title FROM auctions WHERE id = $1`, [id]);
       const title = auctionResult.rows[0]?.title || "Auction";
 

@@ -1,17 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin/auth";
-import { addAuctionImage, removeAuctionImage } from "@/lib/auction/db";
+import { auth } from "@/lib/auth";
+import { addAuctionImage, removeAuctionImage, getAuctionSellerId } from "@/lib/auction/db";
 import { deleteS3Object } from "@/lib/auction/s3";
+
+async function authorize(auctionId: string): Promise<NextResponse | null> {
+  if (await isAdmin()) return null;
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const sellerId = await getAuctionSellerId(auctionId);
+  if (sellerId !== session.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return null;
+}
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!(await isAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { id } = await params;
+  const denied = await authorize(id);
+  if (denied) return denied;
+
   try {
     const { url, s3Key, order } = await req.json();
     if (!url || !s3Key) {
@@ -29,11 +42,10 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  if (!(await isAdmin())) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const { id } = await params;
+  const denied = await authorize(id);
+  if (denied) return denied;
 
-  await params; // consume params
   try {
     const { imageId } = await req.json();
     if (!imageId) {

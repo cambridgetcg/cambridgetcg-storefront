@@ -37,11 +37,62 @@ const APPROVAL_BADGE: Record<string, { className: string; label: string }> = {
   rejected: { className: "bg-red-500/20 text-red-400", label: "Rejected" },
 };
 
+interface Offer {
+  bid_id: string;
+  auction_id: string;
+  auction_title: string;
+  amount: string;
+  buy_now_price: string | null;
+  bidder_name: string | null;
+  bidder_email: string;
+  created_at: string;
+}
+
 export default function MyAuctionsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [auctions, setAuctions] = useState<SellerAuction[]>([]);
+  const [offers, setOffers] = useState<Offer[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [actingOfferId, setActingOfferId] = useState<string | null>(null);
+
+  async function loadOffers() {
+    const r = await fetch("/api/auctions/my/offers");
+    if (!r.ok) return;
+    const d = await r.json();
+    setOffers(d.offers || []);
+  }
+
+  async function loadAuctions() {
+    const r = await fetch("/api/auctions/my");
+    if (!r.ok) return;
+    const d = await r.json();
+    setAuctions(d.auctions || []);
+  }
+
+  async function actOnOffer(offer: Offer, action: "accept" | "reject") {
+    const label = action === "accept"
+      ? `Accept ${formatPrice(parseFloat(offer.amount))} offer from ${offer.bidder_name || offer.bidder_email}? The auction will end immediately.`
+      : `Reject this offer?`;
+    if (!confirm(label)) return;
+
+    setActingOfferId(offer.bid_id);
+    try {
+      const res = await fetch(`/api/auctions/${offer.auction_id}/offers/${offer.bid_id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || `Failed to ${action} offer`);
+        return;
+      }
+      await Promise.all([loadOffers(), loadAuctions()]);
+    } finally {
+      setActingOfferId(null);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/auth/session")
@@ -52,13 +103,7 @@ export default function MyAuctionsPage() {
           return;
         }
 
-        fetch("/api/auctions/my")
-          .then((r) => r.json())
-          .then((d) => {
-            setAuctions(d.auctions || []);
-            setLoading(false);
-          })
-          .catch(() => setLoading(false));
+        Promise.all([loadAuctions(), loadOffers()]).finally(() => setLoading(false));
       });
   }, [router]);
 
@@ -81,6 +126,57 @@ export default function MyAuctionsPage() {
           Sell a Card
         </Link>
       </div>
+
+      {offers.length > 0 && (
+        <div className="bg-neutral-900 rounded-xl p-4 mb-6 border border-amber-500/20">
+          <h2 className="text-sm font-bold text-white mb-3">
+            Open Offers ({offers.length})
+          </h2>
+          <div className="space-y-2">
+            {offers.map((offer) => (
+              <div
+                key={offer.bid_id}
+                className="flex flex-wrap items-center gap-3 p-3 bg-neutral-950 rounded-lg"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold text-white truncate">
+                      {offer.auction_title}
+                    </span>
+                    {offer.buy_now_price && (
+                      <span className="text-xs text-neutral-500">
+                        (Buy Now {formatPrice(parseFloat(offer.buy_now_price))})
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-neutral-500 mt-0.5">
+                    {offer.bidder_name || offer.bidder_email} — {new Date(offer.created_at).toLocaleString("en-GB")}
+                  </div>
+                </div>
+                <div className="text-lg font-bold text-amber-400">
+                  {formatPrice(parseFloat(offer.amount))}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => actOnOffer(offer, "accept")}
+                    disabled={actingOfferId === offer.bid_id}
+                    className="px-3 py-1.5 bg-emerald-500 text-black text-xs font-bold rounded-lg hover:bg-emerald-400 transition disabled:opacity-50"
+                  >
+                    Accept
+                  </button>
+                  <button
+                    onClick={() => actOnOffer(offer, "reject")}
+                    disabled={actingOfferId === offer.bid_id}
+                    className="px-3 py-1.5 bg-neutral-800 text-neutral-300 text-xs font-bold rounded-lg hover:bg-neutral-700 transition disabled:opacity-50"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {auctions.length === 0 ? (
         <div className="bg-neutral-900 rounded-xl p-8 text-center">

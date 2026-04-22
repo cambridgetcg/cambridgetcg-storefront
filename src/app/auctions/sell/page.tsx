@@ -140,7 +140,7 @@ export default function SellAuctionPage() {
         const presignRes = await fetch("/api/auctions/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contentType: file.type }),
+          body: JSON.stringify({ auctionId: createdAuctionId, contentType: file.type }),
         });
 
         if (!presignRes.ok) throw new Error("Failed to get upload URL");

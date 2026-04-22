@@ -1,6 +1,8 @@
 import { query } from "@/lib/db";
 import type { Auction, AuctionImage, AuctionSummary, AuctionDetail, Bid, CreateAuctionInput, BidResult } from "./types";
 import { postActivity, awardAchievement } from "@/lib/social/db";
+import { sendWinnerEmail, sendAuctionEndedAdminEmail } from "./email";
+import { formatPrice } from "@/lib/format";
 
 // ── List auctions (public) ──
 
@@ -55,6 +57,13 @@ export async function listAuctions(filters: {
     auctions: result.rows as AuctionSummary[],
     total: parseInt(countResult.rows[0].count, 10),
   };
+}
+
+// ── Ownership check (cheap; no lazy transitions) ──
+
+export async function getAuctionSellerId(id: string): Promise<string | null> {
+  const result = await query(`SELECT seller_user_id FROM auctions WHERE id = $1`, [id]);
+  return result.rows[0]?.seller_user_id ?? null;
 }
 
 // ── Get single auction detail ──
@@ -177,7 +186,7 @@ export async function deleteAuction(id: string): Promise<boolean> {
 
 // ── Place bid (transactional) ──
 
-export async function placeBid(auctionId: string, userId: string, amount: number): Promise<BidResult> {
+export async function placeBid(auctionId: string, userId: string, amount: number, isBestOffer = false): Promise<BidResult> {
   const { default: pg } = await import("pg");
   const raw = process.env.DATABASE_URL || "";
   const cleaned = raw.replace(/[?&]sslmode=[^&]*/g, "").replace(/\?$/, "");
@@ -198,6 +207,36 @@ export async function placeBid(auctionId: string, userId: string, amount: number
     }
 
     const auction = auctionResult.rows[0];
+
+    if (new Date(auction.ends_at) <= new Date()) {
+      await client.query("ROLLBACK");
+      return { success: false, error: "Auction has ended." };
+    }
+
+    if (isBestOffer) {
+      // Best offers only valid on Buy Now auctions that explicitly allow them.
+      // They don't touch current_price/bid_count and don't outbid anyone — they're
+      // private proposals to the seller, who accepts or rejects later.
+      if (auction.auction_type !== "buy_now" || !auction.allow_best_offer) {
+        await client.query("ROLLBACK");
+        return { success: false, error: "This auction does not accept offers." };
+      }
+
+      const offerResult = await client.query(
+        `INSERT INTO auction_bids (auction_id, user_id, amount, is_best_offer, status)
+         VALUES ($1, $2, $3, true, 'active') RETURNING *`,
+        [auctionId, userId, amount.toFixed(2)]
+      );
+
+      await client.query("COMMIT");
+      return {
+        success: true,
+        bid: offerResult.rows[0] as Bid,
+        auction,
+      };
+    }
+
+    // Regular bid path
     const currentPrice = parseFloat(auction.current_price);
     const increment = parseFloat(auction.bid_increment);
     const minBid = auction.bid_count > 0 ? currentPrice + increment : parseFloat(auction.starting_price);
@@ -207,26 +246,19 @@ export async function placeBid(auctionId: string, userId: string, amount: number
       return { success: false, error: `Minimum bid is £${minBid.toFixed(2)}.` };
     }
 
-    if (new Date(auction.ends_at) <= new Date()) {
-      await client.query("ROLLBACK");
-      return { success: false, error: "Auction has ended." };
-    }
-
-    // Place the bid
     const bidResult = await client.query(
       `INSERT INTO auction_bids (auction_id, user_id, amount, status)
        VALUES ($1, $2, $3, 'active') RETURNING *`,
       [auctionId, userId, amount.toFixed(2)]
     );
 
-    // Mark previous active bids as outbid
+    // Outbid only previous regular bids; leave best offers alone
     await client.query(
       `UPDATE auction_bids SET status = 'outbid'
-       WHERE auction_id = $1 AND status = 'active' AND id != $2`,
+       WHERE auction_id = $1 AND status = 'active' AND is_best_offer = false AND id != $2`,
       [auctionId, bidResult.rows[0].id]
     );
 
-    // Update auction
     await client.query(
       `UPDATE auctions SET current_price = $1, bid_count = bid_count + 1, updated_at = NOW()
        WHERE id = $2`,
@@ -366,9 +398,17 @@ export async function createSellerAuction(userId: string, data: {
 }
 
 export async function approveAuction(auctionId: string, notes?: string): Promise<Auction | null> {
+  // Anchor the seller-intended duration to approval time, not submission time.
+  // ends_at - starts_at on the submission represents the duration the seller asked for;
+  // approval may happen days later, so we shift the window to start now.
   const result = await query(
-    `UPDATE auctions SET approval_status = 'approved', approval_notes = $2,
-     status = 'scheduled', updated_at = NOW()
+    `UPDATE auctions SET
+       approval_status = 'approved',
+       approval_notes  = $2,
+       status          = 'scheduled',
+       starts_at       = NOW(),
+       ends_at         = NOW() + (ends_at - starts_at),
+       updated_at      = NOW()
      WHERE id = $1 AND approval_status = 'pending_review' RETURNING *`,
     [auctionId, notes || null]
   );
@@ -412,6 +452,122 @@ export async function getPendingApprovalAuctions(): Promise<AuctionSummary[]> {
   return result.rows as AuctionSummary[];
 }
 
+// ── Best Offer accept/reject ──
+// Accepting an offer ends the Buy Now auction at the offer price; the offerer becomes the winner.
+// Rejecting just marks the offer as rejected; auction continues.
+
+export async function getOffer(auctionId: string, bidId: string): Promise<{
+  bid: Bid;
+  auction: Auction;
+} | null> {
+  const result = await query(
+    `SELECT b.*, a.id as a_id, a.seller_user_id, a.status as a_status,
+            a.title as a_title, a.auction_type as a_type, a.allow_best_offer
+       FROM auction_bids b
+       JOIN auctions a ON a.id = b.auction_id
+      WHERE b.id = $1 AND b.auction_id = $2`,
+    [bidId, auctionId]
+  );
+  if (result.rows.length === 0) return null;
+  const row = result.rows[0];
+  return {
+    bid: {
+      id: row.id, auction_id: row.auction_id, user_id: row.user_id, amount: row.amount,
+      is_best_offer: row.is_best_offer, status: row.status, created_at: row.created_at,
+    },
+    // Only the seller-relevant fields are needed by callers
+    auction: { id: row.a_id, status: row.a_status, title: row.a_title,
+               auction_type: row.a_type, allow_best_offer: row.allow_best_offer,
+               seller_user_id: row.seller_user_id } as unknown as Auction,
+  };
+}
+
+export async function acceptOffer(auctionId: string, bidId: string): Promise<{
+  ok: boolean;
+  error?: string;
+  winnerEmail?: string;
+  winningPrice?: string;
+  auctionTitle?: string;
+}> {
+  const { default: pg } = await import("pg");
+  const raw = process.env.DATABASE_URL || "";
+  const cleaned = raw.replace(/[?&]sslmode=[^&]*/g, "").replace(/\?$/, "");
+  const pool = new pg.Pool({ connectionString: cleaned, ssl: { rejectUnauthorized: false } });
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const auctionRes = await client.query(
+      `SELECT * FROM auctions WHERE id = $1 FOR UPDATE`,
+      [auctionId]
+    );
+    if (auctionRes.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return { ok: false, error: "Auction not found." };
+    }
+    const auction = auctionRes.rows[0];
+
+    if (auction.status !== "live") {
+      await client.query("ROLLBACK");
+      return { ok: false, error: "Auction is not live." };
+    }
+
+    const bidRes = await client.query(
+      `SELECT b.*, u.email FROM auction_bids b JOIN users u ON b.user_id = u.id
+        WHERE b.id = $1 AND b.auction_id = $2 AND b.is_best_offer = true AND b.status = 'active'`,
+      [bidId, auctionId]
+    );
+    if (bidRes.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return { ok: false, error: "Offer not found or already resolved." };
+    }
+    const bid = bidRes.rows[0];
+
+    // End the auction at the offer price; mark this bid winning, others rejected
+    await client.query(
+      `UPDATE auctions SET status = 'ended', actual_end_at = NOW(),
+         winner_user_id = $1, current_price = $2, updated_at = NOW()
+        WHERE id = $3`,
+      [bid.user_id, bid.amount, auctionId]
+    );
+    await client.query(
+      `UPDATE auction_bids SET status = 'winning' WHERE id = $1`,
+      [bidId]
+    );
+    await client.query(
+      `UPDATE auction_bids SET status = 'rejected'
+        WHERE auction_id = $1 AND status = 'active' AND id != $2`,
+      [auctionId, bidId]
+    );
+
+    await client.query("COMMIT");
+
+    return {
+      ok: true,
+      winnerEmail: bid.email,
+      winningPrice: bid.amount,
+      auctionTitle: auction.title,
+    };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+    await pool.end();
+  }
+}
+
+export async function rejectOffer(auctionId: string, bidId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE auction_bids SET status = 'rejected'
+      WHERE id = $1 AND auction_id = $2 AND is_best_offer = true AND status = 'active'
+      RETURNING id`,
+    [bidId, auctionId]
+  );
+  return result.rows.length > 0;
+}
+
 export async function calculateSellerPayout(auctionId: string): Promise<{ payout: number; commission: number } | null> {
   const result = await query(`SELECT * FROM auctions WHERE id = $1`, [auctionId]);
   if (result.rows.length === 0) return null;
@@ -439,29 +595,69 @@ async function transitionScheduledToLive(): Promise<void> {
 }
 
 async function transitionLiveToEnded(): Promise<void> {
-  // Find auctions that should end and set winner
+  // Find auctions that should end. Return enough fields to decide reserve + emails
+  // without a second query per row.
   const ended = await query(
     `UPDATE auctions SET status = 'ended', actual_end_at = NOW(), updated_at = NOW()
      WHERE status = 'live' AND ends_at <= NOW()
-     RETURNING id`
+     RETURNING id, title, reserve_price, bid_count`
   );
 
-  // Set winners for ended auctions
   for (const row of ended.rows) {
+    // Pick highest non-best-offer bid; best offers are seller-driven, not auction winners
     const highBid = await query(
-      `SELECT user_id FROM auction_bids WHERE auction_id = $1 AND status = 'active'
-       ORDER BY amount DESC LIMIT 1`,
+      `SELECT b.user_id, b.amount, u.email
+         FROM auction_bids b
+         JOIN users u ON b.user_id = u.id
+        WHERE b.auction_id = $1 AND b.status = 'active' AND b.is_best_offer = false
+        ORDER BY b.amount DESC LIMIT 1`,
       [row.id]
     );
-    if (highBid.rows.length > 0) {
+
+    const reserve = row.reserve_price ? parseFloat(row.reserve_price) : null;
+    const winning = highBid.rows[0];
+    const reserveMet = winning && (reserve === null || parseFloat(winning.amount) >= reserve);
+
+    let winnerEmail: string | null = null;
+    let winningPrice = "0";
+
+    if (winning && reserveMet) {
       await query(
-        `UPDATE auctions SET winner_user_id = $1 WHERE id = $2`,
-        [highBid.rows[0].user_id, row.id]
+        `UPDATE auctions SET winner_user_id = $1, current_price = $2 WHERE id = $3`,
+        [winning.user_id, winning.amount, row.id]
       );
       await query(
-        `UPDATE auction_bids SET status = 'winning' WHERE auction_id = $1 AND status = 'active'`,
+        `UPDATE auction_bids SET status = 'winning'
+          WHERE auction_id = $1 AND user_id = $2 AND amount = $3 AND is_best_offer = false`,
+        [row.id, winning.user_id, winning.amount]
+      );
+      winnerEmail = winning.email;
+      winningPrice = winning.amount;
+    } else if (winning && !reserveMet) {
+      // Reserve unmet — auction ends with no winner; mark active bids as outbid for clarity
+      await query(
+        `UPDATE auction_bids SET status = 'outbid'
+          WHERE auction_id = $1 AND status = 'active' AND is_best_offer = false`,
         [row.id]
       );
     }
+
+    // Fire-and-forget notifications; never block the lazy transition on email
+    if (winnerEmail) {
+      sendWinnerEmail({
+        email: winnerEmail,
+        auctionTitle: row.title,
+        auctionId: row.id,
+        winningPrice: formatPrice(parseFloat(winningPrice)),
+      }).catch((err) => console.error("[auction] Winner email failed:", err));
+    }
+
+    sendAuctionEndedAdminEmail({
+      auctionTitle: row.title,
+      auctionId: row.id,
+      winnerEmail,
+      winningPrice: formatPrice(parseFloat(winningPrice)),
+      bidCount: row.bid_count,
+    }).catch((err) => console.error("[auction] Admin end email failed:", err));
   }
 }
