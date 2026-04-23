@@ -7,6 +7,7 @@ import { aiTurn, generateAIDeck } from "@/lib/game/ai";
 import { earnPoints, addCredit } from "@/lib/membership/db";
 import { postActivity } from "@/lib/social/db";
 import { grantPullToken, type PullTier } from "@/lib/bounty/db";
+import { calculateBerriesEarn } from "@/lib/bounty/earn";
 import type { GameState } from "@/lib/game/types";
 
 // First-clear milestone map: L3 → Uncommon Pull, L6 → Rare, L10 → Super Rare.
@@ -241,8 +242,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ lev
       [session.user.id, level.id],
     );
     const isFirstClear = progressResult.rows.length === 0 || !progressResult.rows[0].cleared;
-    const points = isFirstClear ? level.first_clear_points : level.repeat_points;
     const credit = isFirstClear ? parseFloat(level.first_clear_credit || "0") : 0;
+
+    // Apply streak + tier + daily-diminishing multipliers on top of the base.
+    const earn = await calculateBerriesEarn({
+      userId: session.user.id,
+      levelId: level.id,
+      baseFirstClear: level.first_clear_points,
+      baseRepeat: level.repeat_points,
+      isFirstClear,
+    });
 
     await query(
       `INSERT INTO pve_progress (user_id, level_id, cleared, clear_count, best_turns, best_life_remaining, total_points_earned, first_cleared_at)
@@ -253,15 +262,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ lev
          best_life_remaining=GREATEST(pve_progress.best_life_remaining, $4),
          total_points_earned=pve_progress.total_points_earned+$5,
          last_played_at=NOW()`,
-      [session.user.id, level.id, turnsPlayed || null, lifeRemaining || null, points],
+      [session.user.id, level.id, turnsPlayed || null, lifeRemaining || null, earn.total],
     );
 
-    if (points > 0) {
+    if (earn.total > 0) {
+      const multParts: string[] = [];
+      if (earn.dailyMultiplier < 1) multParts.push(`${Math.round(earn.dailyMultiplier * 100)}% daily`);
+      if (earn.streakMultiplier > 1) multParts.push(`${earn.streakMultiplier.toFixed(2)}x streak`);
+      if (earn.tierMultiplier > 1) multParts.push(`${earn.tierMultiplier.toFixed(2)}x tier`);
+      const multSuffix = multParts.length ? ` [${multParts.join(", ")}]` : "";
       await earnPoints(
         session.user.id,
-        points,
+        earn.total,
         "manual_credit",
-        `PVE Victory: ${level.title} (${isFirstClear ? "first clear" : "repeat"})`,
+        `PVE Victory: ${level.title} (${isFirstClear ? "first clear" : "repeat"})${multSuffix}`,
         gameId,
       );
     }
@@ -291,9 +305,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ lev
     return NextResponse.json({
       victory: true,
       firstClear: isFirstClear,
-      pointsEarned: points,
+      pointsEarned: earn.total,
       creditEarned: credit,
       pullTokenEarned: milestonePull,
+      earnBreakdown: {
+        base: earn.base,
+        dailyMultiplier: earn.dailyMultiplier,
+        streakMultiplier: earn.streakMultiplier,
+        tierMultiplier: earn.tierMultiplier,
+        clearsToday: earn.clearsToday,
+        currentStreak: earn.currentStreak,
+      },
       level: level.level_number,
       nextLevel: level.level_number + 1,
     });

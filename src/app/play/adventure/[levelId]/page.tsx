@@ -52,11 +52,22 @@ interface OpponentInfo {
   title: string;
 }
 
+interface EarnBreakdown {
+  base: number;
+  dailyMultiplier: number;
+  streakMultiplier: number;
+  tierMultiplier: number;
+  clearsToday: number;
+  currentStreak: number;
+}
+
 interface VictoryResult {
   victory: boolean;
   firstClear: boolean;
   pointsEarned: number;
   creditEarned: number;
+  pullTokenEarned?: "common" | "uncommon" | "rare" | "super_rare" | "legendary" | null;
+  earnBreakdown?: EarnBreakdown;
   nextLevel: string | null;
 }
 
@@ -1038,10 +1049,58 @@ export default function PVEGameBoard() {
                 <span>&#11088;</span>
                 <span className="text-amber-400 font-bold">+{victoryResult.pointsEarned} Berries</span>
               </div>
+
+              {/* Earn breakdown — shown when any multiplier is in play */}
+              {victoryResult.earnBreakdown && (() => {
+                const b = victoryResult.earnBreakdown;
+                const hasDaily = b.dailyMultiplier < 1;
+                const hasStreak = b.streakMultiplier > 1;
+                const hasTier = b.tierMultiplier > 1;
+                if (!hasDaily && !hasStreak && !hasTier) return null;
+                return (
+                  <div className="text-xs text-neutral-400 font-mono bg-neutral-900/50 rounded-lg p-2 leading-relaxed">
+                    <span>{b.base} base</span>
+                    {hasDaily && (
+                      <>
+                        <span className="text-neutral-600"> × </span>
+                        <span className="text-red-400">
+                          {Math.round(b.dailyMultiplier * 100)}%
+                          <span className="text-neutral-500"> (clear #{b.clearsToday} today)</span>
+                        </span>
+                      </>
+                    )}
+                    {hasStreak && (
+                      <>
+                        <span className="text-neutral-600"> × </span>
+                        <span className="text-orange-400">
+                          {b.streakMultiplier.toFixed(2)}x
+                          <span className="text-neutral-500"> ({b.currentStreak}-day streak)</span>
+                        </span>
+                      </>
+                    )}
+                    {hasTier && (
+                      <>
+                        <span className="text-neutral-600"> × </span>
+                        <span className="text-purple-400">{b.tierMultiplier.toFixed(2)}x tier</span>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+
               {victoryResult.creditEarned > 0 && (
                 <div className="flex items-center justify-center gap-2 text-lg">
                   <span>&#128176;</span>
                   <span className="text-green-400 font-bold">+&pound;{Number(victoryResult.creditEarned).toFixed(2)} store credit</span>
+                </div>
+              )}
+
+              {victoryResult.pullTokenEarned && (
+                <div className="flex items-center justify-center gap-2 text-sm bg-gradient-to-r from-amber-500/20 to-fuchsia-500/20 border border-amber-500/30 rounded-lg py-2 px-3">
+                  <span>&#127891;</span>
+                  <span className="text-amber-300 font-bold">
+                    {victoryResult.pullTokenEarned.replace("_", " ").toUpperCase()} Pull Token
+                  </span>
                 </div>
               )}
             </div>

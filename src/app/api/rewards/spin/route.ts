@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { spendPoints, earnPoints, addCredit } from "@/lib/membership/db";
+import { bumpStreak } from "@/lib/membership/streak";
 import { query } from "@/lib/db";
 
 interface Segment {
@@ -28,36 +29,9 @@ export async function GET() {
     );
     spinsToday = parseInt(todaySpins.rows[0].count, 10);
 
-    // Update streak
-    const streakResult = await query(
-      `INSERT INTO user_streaks (user_id, current_streak, last_visit_date, total_visits)
-       VALUES ($1, 1, CURRENT_DATE, 1)
-       ON CONFLICT (user_id) DO UPDATE SET
-         current_streak = CASE
-           WHEN user_streaks.last_visit_date = CURRENT_DATE THEN user_streaks.current_streak
-           WHEN user_streaks.last_visit_date = CURRENT_DATE - 1 THEN user_streaks.current_streak + 1
-           ELSE 1
-         END,
-         longest_streak = GREATEST(user_streaks.longest_streak,
-           CASE
-             WHEN user_streaks.last_visit_date = CURRENT_DATE THEN user_streaks.current_streak
-             WHEN user_streaks.last_visit_date = CURRENT_DATE - 1 THEN user_streaks.current_streak + 1
-             ELSE 1
-           END
-         ),
-         last_visit_date = CURRENT_DATE,
-         total_visits = user_streaks.total_visits + CASE WHEN user_streaks.last_visit_date = CURRENT_DATE THEN 0 ELSE 1 END,
-         streak_multiplier = LEAST(1.50, 1.00 + (
-           CASE
-             WHEN user_streaks.last_visit_date = CURRENT_DATE THEN user_streaks.current_streak
-             WHEN user_streaks.last_visit_date = CURRENT_DATE - 1 THEN user_streaks.current_streak + 1
-             ELSE 1
-           END - 1) * 0.02),
-         updated_at = NOW()
-       RETURNING *`,
-      [session.user.id]
-    );
-    streak = streakResult.rows[0]?.current_streak || 0;
+    // Update streak via shared helper
+    const s = await bumpStreak(session.user.id);
+    streak = s.currentStreak;
   }
 
   return NextResponse.json({
