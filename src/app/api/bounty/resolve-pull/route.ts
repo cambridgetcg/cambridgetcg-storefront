@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { resolvePull } from "@/lib/bounty/resolver";
 import type { PullTier } from "@/lib/bounty/db";
+import { sendPullResolvedEmail } from "@/lib/email/bounty";
 
 const VALID_TIERS: PullTier[] = ["common", "uncommon", "rare", "super_rare", "legendary"];
 
@@ -28,6 +29,25 @@ export async function POST(request: Request) {
       : 500;
     return NextResponse.json(result, { status });
   }
+
+  // Fire the pull-resolved email asynchronously — the user's HTTP response
+  // doesn't wait on SES, and an email failure must not fail the draw.
+  void sendPullResolvedEmail({
+    userId: session.user.id,
+    tier,
+    rolledRarity: result.rolled_rarity,
+    cardName: result.vault_item.card_name,
+    cardNumber: result.vault_item.card_number,
+    rarity: result.vault_item.rarity,
+    spotPriceGbp: parseFloat(result.vault_item.spot_price_gbp),
+    imageUrl: result.vault_item.image_url,
+    vaultItemId: result.vault_item.id,
+    expiresAt: new Date(result.vault_item.expires_at),
+    rngCommitment: result.rng_commitment,
+    rngServerSeed: result.rng_server_seed,
+    rngClientSeed: result.rng_client_seed,
+    rngNonce: result.rng_nonce,
+  }).catch((err) => console.error("[bounty] pull-resolved email failed:", err));
 
   return NextResponse.json(result);
 }
