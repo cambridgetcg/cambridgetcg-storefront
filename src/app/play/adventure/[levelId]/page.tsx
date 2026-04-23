@@ -220,15 +220,27 @@ export default function PVEGameBoard() {
 
     async function fetchInitial() {
       try {
-        // The start action already returned state; if we refresh the page,
-        // re-start is needed. For now, we signal setup is needed.
-        setNeedsSetup(true);
+        const res = await fetch(`/api/game/pve/${levelId}?gameId=${gameId}`);
+        if (!res.ok) {
+          setNeedsSetup(true);
+          return;
+        }
+        const data = await res.json();
+        if (data.state && data.status === "playing") {
+          setState(data.state);
+          setOpponent(data.opponent);
+          setNeedsSetup(false);
+        } else {
+          // Game already finished or abandoned — bounce to setup
+          setNeedsSetup(true);
+        }
       } catch {
         setError("Failed to load game state.");
+        setNeedsSetup(true);
       }
     }
     fetchInitial();
-  }, [gameId, state]);
+  }, [gameId, levelId, state]);
 
   /* ================================================================ */
   /*  Game Log                                                        */
@@ -247,26 +259,32 @@ export default function PVEGameBoard() {
   /* ================================================================ */
 
   const sendAction = useCallback(async (type: string, data: Record<string, unknown> = {}) => {
-    if (actionLoading || !state || !myState) return;
+    if (actionLoading || !state || !myState || !gameId) return;
     setActionLoading(true);
     setError(null);
 
-    try {
-      // Apply action locally on the state (client-side for responsiveness)
-      const newState = applyAction(state, "player1", type, data);
-      setState(newState);
-      addLog(formatActionText(type, data), false);
+    // Optimistic: render immediately, reconcile from server.
+    const optimistic = applyAction(state, "player1", type, data);
+    setState(optimistic);
+    addLog(formatActionText(type, data), false);
 
-      // Also send to server for persistence
-      if (gameId) {
-        await fetch(`/api/game/pve/${levelId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "game_action", gameId, type, data }),
-        }).catch(() => { /* fire and forget, local state is truth during PVE */ });
+    try {
+      const res = await fetch(`/api/game/pve/${levelId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "action", gameId, type, data }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        // Server rejected — roll back to the pre-action state
+        setState(state);
+        setError(result.error || "Action rejected.");
+        return;
       }
+      if (result.state) setState(result.state);
     } catch {
-      setError("Action failed.");
+      setState(state);
+      setError("Network error.");
     } finally {
       setActionLoading(false);
       setSelectedCard(null);
@@ -280,12 +298,10 @@ export default function PVEGameBoard() {
   async function handleEndTurn() {
     if (!state || !gameId) return;
 
-    // End player turn
-    const newState = applyAction(state, "player1", "end_turn", {});
-    setState(newState);
-    addLog("You ended your turn.", false);
+    // End the human turn via the server (server applies + persists).
+    await sendAction("end_turn", {});
 
-    // Trigger AI turn
+    // Trigger AI turn — server generates, applies, and persists it.
     setAiThinking(true);
     setAiThinkingText(`${opponent?.name ?? "AI"} is thinking`);
 
@@ -295,29 +311,28 @@ export default function PVEGameBoard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "ai_turn", gameId }),
       });
-      const result: AITurnResult = await res.json();
+      const result: AITurnResult & { state?: GameState } = await res.json();
 
-      if (result.thinking) {
-        addLog(result.thinking, true);
-      }
+      if (result.thinking) addLog(result.thinking, true);
 
-      // Replay AI actions one at a time with delay
+      // Replay the AI actions client-side purely for animation timing.
+      // The server already applied them — we use the returned state as truth.
       if (result.actions && result.actions.length > 0) {
         replayingRef.current = true;
-        let currentState = newState;
-
-        for (let i = 0; i < result.actions.length; i++) {
-          const action = result.actions[i];
+        // Use the most recent client state (post-end_turn) as the animation start.
+        let animState = state;
+        for (const action of result.actions) {
           await new Promise(resolve => setTimeout(resolve, AI_ACTION_DELAY_MS));
-          currentState = applyAction(currentState, "player2", action.type, action.data);
-          setState({ ...currentState });
+          animState = applyAction(animState, "player2", action.type, action.data);
+          setState({ ...animState });
           addLog(`${opponent?.name ?? "AI"}: ${formatActionText(action.type, action.data)}`, true);
-          // If an AI attack ended the game, stop queued actions immediately.
-          if (currentState.phase === "finished") break;
+          if (animState.phase === "finished") break;
         }
-
         replayingRef.current = false;
       }
+
+      // Reconcile with the server's authoritative final state.
+      if (result.state) setState(result.state);
     } catch {
       addLog("AI turn failed. Your turn again.", true);
     } finally {
@@ -358,7 +373,7 @@ export default function PVEGameBoard() {
   /*  Concede / Defeat                                                */
   /* ================================================================ */
 
-  async function handleConcede() {
+  async function handleConcede(manual: boolean = true) {
     if (!gameId) return;
     setActionLoading(true);
 
@@ -366,7 +381,7 @@ export default function PVEGameBoard() {
       const res = await fetch(`/api/game/pve/${levelId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "defeat", gameId }),
+        body: JSON.stringify({ action: "defeat", gameId, concede: manual }),
       });
       const result: DefeatResult = await res.json();
       setDefeatResult(result);
@@ -396,7 +411,7 @@ export default function PVEGameBoard() {
       handleClaimVictory();
     } else {
       addLog("You were defeated.", true);
-      handleConcede();
+      handleConcede(false);
     }
     // handleClaimVictory/handleConcede close over current state; running once
     // on the finished transition is sufficient.

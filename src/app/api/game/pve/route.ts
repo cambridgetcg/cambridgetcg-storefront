@@ -10,7 +10,7 @@ export async function GET() {
     `SELECT * FROM pve_levels WHERE is_active=true ORDER BY level_number ASC`
   );
 
-  let progress: Record<number, { cleared: boolean; clearCount: number; bestTurns: number | null; totalPoints: number }> = {};
+  const progress: Record<number, { cleared: boolean; clearCount: number; bestTurns: number | null; totalPoints: number }> = {};
 
   if (session?.user?.id) {
     const prog = await query(
