@@ -455,11 +455,23 @@ export async function createSellerAuction(userId: string, data: {
 }): Promise<Auction> {
   const currentPrice = data.starting_price;
 
+  // Membership tier may grant auto-approval. We resolve it inline so the
+  // auction skips the manual review queue when applicable.
+  const tierRes = await query(
+    `SELECT t.auction_priority_approval AS auto_ok
+       FROM users u LEFT JOIN tiers t ON t.id = u.tier_id
+      WHERE u.id = $1`,
+    [userId]
+  );
+  const autoApprove = tierRes.rows[0]?.auto_ok === true;
+  const initialApproval = autoApprove ? "approved"        : "pending_review";
+  const initialStatus   = autoApprove ? "scheduled"      : "draft";
+
   const result = await query(
     `INSERT INTO auctions (title, description, auction_type, starting_price, reserve_price,
       buy_now_price, bid_increment, starts_at, ends_at, current_price, allow_best_offer,
       seller_user_id, is_consignment, approval_status, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false,'pending_review','draft')
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,false,$13,$14)
      RETURNING *`,
     [
       data.title,
@@ -474,14 +486,33 @@ export async function createSellerAuction(userId: string, data: {
       currentPrice.toFixed(2),
       data.allow_best_offer || false,
       userId,
+      initialApproval,
+      initialStatus,
     ]
   );
+  const auction = result.rows[0] as Auction;
 
   // Social: activity feed + achievement
   postActivity(userId, "auction_listed", "Listed a card at auction").catch(() => {});
   awardAchievement(userId, "first_auction").catch(() => {});
 
-  return result.rows[0] as Auction;
+  // Auto-approval bypass: notify followers immediately since the listing is
+  // live (mirrors the post-approval notify in approveAuction). Without this,
+  // a Platinum seller's followers wouldn't get the inline broadcast.
+  if (autoApprove && auction.seller_user_id) {
+    const { notifyFollowersOfAuctionListing } = await import("@/lib/social/notify");
+    notifyFollowersOfAuctionListing({
+      sellerId: auction.seller_user_id,
+      auctionId: auction.id,
+      auctionTitle: auction.title,
+      imageUrl: null, // images attach after creation; will be missing on auto-approval
+      startingPrice: parseFloat(auction.starting_price),
+      buyNowPrice: auction.buy_now_price ? parseFloat(auction.buy_now_price) : null,
+      endsAt: auction.ends_at,
+    }).catch((err) => console.error("[auction] auto-approve follower notify failed:", err));
+  }
+
+  return auction;
 }
 
 export async function approveAuction(auctionId: string, notes?: string): Promise<Auction | null> {
