@@ -4,6 +4,13 @@ import { postActivity, awardAchievement } from "@/lib/social/db";
 import { sendWinnerEmail, sendAuctionEndedAdminEmail } from "./email";
 import { formatPrice } from "@/lib/format";
 
+// Anti-sniping: a bid placed in the last ANTI_SNIPE_WINDOW_MS extends the
+// auction so the previous high bidder always has a chance to respond. No
+// max-extensions cap — sniping wars resolve naturally when one side stops.
+const ANTI_SNIPE_WINDOW_MS = 5 * 60 * 1000;
+// How long a winner has to pay after the auction ends before it auto-cancels.
+const AUCTION_PAYMENT_WINDOW_MS = 48 * 60 * 60 * 1000;
+
 // ── List auctions (public) ──
 
 export async function listAuctions(filters: {
@@ -15,6 +22,7 @@ export async function listAuctions(filters: {
   // Lazy status transitions first
   await transitionScheduledToLive();
   await transitionLiveToEnded();
+  await sweepUnpaidEndedAuctions();
 
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -259,18 +267,95 @@ export async function placeBid(auctionId: string, userId: string, amount: number
       [auctionId, bidResult.rows[0].id]
     );
 
-    await client.query(
-      `UPDATE auctions SET current_price = $1, bid_count = bid_count + 1, updated_at = NOW()
-       WHERE id = $2`,
-      [amount.toFixed(2), auctionId]
-    );
+    // Decide what happens to the auction itself.
+    //   - Buy Now bid at >= buy_now_price: end immediately, this bidder wins.
+    //   - English auction with bid in the last ANTI_SNIPE_WINDOW_MS: extend
+    //     ends_at so the previous high bidder gets a chance to respond.
+    //   - Otherwise: just update price + bid count.
+    const buyNowPrice = auction.buy_now_price ? parseFloat(auction.buy_now_price) : null;
+    const isBuyNowFill = auction.auction_type === "buy_now" && buyNowPrice !== null && amount >= buyNowPrice;
+
+    let updatedAuction;
+    let extendedEndsAt: string | null = null;
+    let endedNow = false;
+
+    if (isBuyNowFill) {
+      // End the auction immediately and crown the bidder. The bid stays 'active'
+      // here; the lazy transitionLiveToEnded will mark it 'winning' and fire
+      // emails on the next read. We pre-emptively set actual_end_at and winner
+      // so the next transition sweep picks it up correctly.
+      const paymentExpiresAt = new Date(Date.now() + AUCTION_PAYMENT_WINDOW_MS).toISOString();
+      const r = await client.query(
+        `UPDATE auctions
+            SET current_price = $1, bid_count = bid_count + 1,
+                status = 'ended', actual_end_at = NOW(),
+                winner_user_id = $2, payment_expires_at = $3,
+                updated_at = NOW()
+          WHERE id = $4 RETURNING *`,
+        [amount.toFixed(2), userId, paymentExpiresAt, auctionId]
+      );
+      // Mark the winning bid now so downstream queries see it consistently.
+      await client.query(
+        `UPDATE auction_bids SET status = 'winning' WHERE id = $1`,
+        [bidResult.rows[0].id]
+      );
+      updatedAuction = r.rows[0];
+      endedNow = true;
+    } else {
+      const msUntilEnd = new Date(auction.ends_at).getTime() - Date.now();
+      const shouldExtend = auction.auction_type === "english" && msUntilEnd > 0 && msUntilEnd < ANTI_SNIPE_WINDOW_MS;
+
+      if (shouldExtend) {
+        const newEndsAt = new Date(Date.now() + ANTI_SNIPE_WINDOW_MS).toISOString();
+        const r = await client.query(
+          `UPDATE auctions SET current_price = $1, bid_count = bid_count + 1,
+                                ends_at = $2, updated_at = NOW()
+            WHERE id = $3 RETURNING *`,
+          [amount.toFixed(2), newEndsAt, auctionId]
+        );
+        updatedAuction = r.rows[0];
+        extendedEndsAt = newEndsAt;
+      } else {
+        const r = await client.query(
+          `UPDATE auctions SET current_price = $1, bid_count = bid_count + 1, updated_at = NOW()
+            WHERE id = $2 RETURNING *`,
+          [amount.toFixed(2), auctionId]
+        );
+        updatedAuction = r.rows[0];
+      }
+    }
 
     await client.query("COMMIT");
+
+    // Fire the winner + admin emails for the immediate Buy Now end. The lazy
+    // sweep would catch this eventually, but the buyer expects an instant
+    // confirmation; firing here matches the ordinary end-of-auction emails.
+    if (endedNow) {
+      const winnerEmailRes = await query(`SELECT email FROM users WHERE id = $1`, [userId]).catch(() => ({ rows: [] }));
+      const winnerEmail = winnerEmailRes.rows[0]?.email;
+      if (winnerEmail) {
+        sendWinnerEmail({
+          email: winnerEmail,
+          auctionTitle: updatedAuction.title,
+          auctionId: updatedAuction.id,
+          winningPrice: formatPrice(amount),
+        }).catch((err) => console.error("[auction] BuyNow winner email failed:", err));
+      }
+      sendAuctionEndedAdminEmail({
+        auctionTitle: updatedAuction.title,
+        auctionId: updatedAuction.id,
+        winnerEmail: winnerEmail ?? null,
+        winningPrice: formatPrice(amount),
+        bidCount: updatedAuction.bid_count,
+      }).catch((err) => console.error("[auction] BuyNow admin email failed:", err));
+    }
 
     return {
       success: true,
       bid: bidResult.rows[0] as Bid,
-      auction: { ...auction, current_price: amount.toFixed(2), bid_count: auction.bid_count + 1 },
+      auction: extendedEndsAt
+        ? { ...updatedAuction, current_price: amount.toFixed(2) }
+        : updatedAuction,
     };
   } catch (err) {
     await client.query("ROLLBACK");
@@ -622,9 +707,14 @@ async function transitionLiveToEnded(): Promise<void> {
     let winningPrice = "0";
 
     if (winning && reserveMet) {
+      // Stamp payment deadline so the winner can't sit on it forever; the
+      // unpaid-cancel sweep picks this up after AUCTION_PAYMENT_WINDOW_MS.
+      const paymentExpiresAt = new Date(Date.now() + AUCTION_PAYMENT_WINDOW_MS).toISOString();
       await query(
-        `UPDATE auctions SET winner_user_id = $1, current_price = $2 WHERE id = $3`,
-        [winning.user_id, winning.amount, row.id]
+        `UPDATE auctions SET winner_user_id = $1, current_price = $2,
+                              payment_expires_at = $3
+           WHERE id = $4`,
+        [winning.user_id, winning.amount, paymentExpiresAt, row.id]
       );
       await query(
         `UPDATE auction_bids SET status = 'winning'
@@ -660,4 +750,40 @@ async function transitionLiveToEnded(): Promise<void> {
       bidCount: row.bid_count,
     }).catch((err) => console.error("[auction] Admin end email failed:", err));
   }
+}
+
+// Cancel auctions whose winner never paid in time. Resets winner so the
+// listing is clearly unpaid; the auction itself moves to 'cancelled' rather
+// than re-opening (auctions, unlike continuous market orders, don't naturally
+// re-list at the same end time — relisting is a separate seller action).
+async function sweepUnpaidEndedAuctions(): Promise<void> {
+  const expired = await query(
+    `UPDATE auctions
+        SET status = 'cancelled', updated_at = NOW()
+      WHERE status = 'ended'
+        AND winner_user_id IS NOT NULL
+        AND paid_at IS NULL
+        AND payment_expires_at IS NOT NULL
+        AND payment_expires_at <= NOW()
+      RETURNING id, title`
+  );
+
+  for (const row of expired.rows) {
+    sendAuctionEndedAdminEmail({
+      auctionTitle: row.title,
+      auctionId: row.id,
+      winnerEmail: null,
+      winningPrice: formatPrice(0),
+      bidCount: 0,
+    }).catch((err) => console.error("[auction] Unpaid-cancel admin email failed:", err));
+  }
+}
+
+// ── Cron entry point ──
+// Runs all auction lifecycle transitions out-of-band so they don't depend on
+// read traffic. Lazy versions remain wired into reads as a safety net.
+export async function runAuctionMaintenance(): Promise<void> {
+  await transitionScheduledToLive();
+  await transitionLiveToEnded();
+  await sweepUnpaidEndedAuctions();
 }

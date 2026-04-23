@@ -10,6 +10,14 @@ type TradeWithRole = MarketTrade & {
   payment_expires_at?: string | null;
 };
 
+interface TradePhoto {
+  id: string;
+  trade_id: string;
+  url: string;
+  approved: boolean | null;
+  created_at: string;
+}
+
 const ESCROW_BADGES: Record<EscrowStatus, { label: string; color: string }> = {
   awaiting_payment: { label: "Awaiting Payment", color: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
   paid: { label: "Paid", color: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
@@ -41,6 +49,111 @@ function formatDate(iso: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+// Photos must be uploaded before the seller ships for verified / full_escrow
+// tiers. We render one card per trade that qualifies; admin reviews server-side.
+function TradePhotoUploader({ trade }: { trade: TradeWithRole }) {
+  const [photos, setPhotos] = useState<TradePhoto[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/market/trades/${trade.id}/photos`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setPhotos(d.photos || []); })
+      .catch(() => {});
+  }, [trade.id]);
+
+  async function handleFiles(files: FileList) {
+    setUploading(true);
+    setError(null);
+    try {
+      for (const file of Array.from(files)) {
+        const presign = await fetch(`/api/market/trades/${trade.id}/photos/upload`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contentType: file.type }),
+        });
+        if (!presign.ok) throw new Error((await presign.json()).error || "Upload URL failed");
+        const { uploadUrl, imageUrl, s3Key } = await presign.json();
+
+        const put = await fetch(uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+        if (!put.ok) throw new Error("S3 upload failed");
+
+        const reg = await fetch(`/api/market/trades/${trade.id}/photos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: imageUrl, s3Key }),
+        });
+        if (!reg.ok) throw new Error("Photo register failed");
+        const { photo } = await reg.json();
+        setPhotos((prev) => [...prev, photo]);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="bg-neutral-900 border border-amber-500/20 rounded-xl p-4 mb-3">
+      <div className="flex items-center gap-3 mb-3">
+        {trade.image_url && (
+          <img src={trade.image_url} alt="" className="w-10 h-14 rounded object-cover" />
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-white truncate">{trade.card_name || trade.sku}</p>
+          <p className="text-xs text-neutral-400 mt-0.5">
+            {trade.escrow_tier === "full_escrow"
+              ? "Upload card photos before shipping to Cambridge TCG"
+              : "Upload card photos for CTCG review before shipping to the buyer"}
+          </p>
+        </div>
+      </div>
+
+      {photos.length > 0 && (
+        <div className="flex gap-2 flex-wrap mb-3">
+          {photos.map((p) => (
+            <div key={p.id} className="relative">
+              <img src={p.url} alt="" className="w-16 h-16 rounded object-cover border border-neutral-700" />
+              <span
+                className={`absolute bottom-0 right-0 text-[9px] px-1 rounded-tl ${
+                  p.approved === true
+                    ? "bg-emerald-500 text-black"
+                    : p.approved === false
+                    ? "bg-red-500 text-white"
+                    : "bg-amber-500 text-black"
+                }`}
+              >
+                {p.approved === true ? "OK" : p.approved === false ? "X" : "?"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <label className="inline-block">
+        <span className={`px-3 py-1.5 text-xs font-bold rounded-md cursor-pointer transition ${uploading ? "bg-neutral-700 text-neutral-400" : "bg-amber-500 text-black hover:bg-amber-400"}`}>
+          {uploading ? "Uploading..." : "Upload Photos"}
+        </span>
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          disabled={uploading}
+          onChange={(e) => { if (e.target.files?.length) { handleFiles(e.target.files); e.target.value = ""; } }}
+          className="hidden"
+        />
+      </label>
+      {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+    </div>
+  );
 }
 
 export default function TradesPage() {
@@ -88,9 +201,29 @@ export default function TradesPage() {
     setConfirmOpen(true);
   }
 
+  // Trades that need seller-side photo upload before shipping. These block
+  // progression for verified / full_escrow tiers.
+  const photosNeeded = trades.filter(
+    (t) =>
+      t.current_user_role === "seller" &&
+      t.requires_photos &&
+      (t.escrow_status === "paid" || t.escrow_status === "awaiting_shipment")
+  );
+
   return (
     <div>
       <h1 className="text-2xl font-black text-white mb-6">Trades</h1>
+
+      {photosNeeded.length > 0 && (
+        <div className="mb-6">
+          <h2 className="text-sm font-bold text-amber-400 mb-2 uppercase tracking-wide">
+            Action needed: photos
+          </h2>
+          {photosNeeded.map((t) => (
+            <TradePhotoUploader key={t.id} trade={t} />
+          ))}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 bg-neutral-900 rounded-lg p-1 mb-6 w-fit">

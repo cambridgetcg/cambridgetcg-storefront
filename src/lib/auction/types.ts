@@ -25,6 +25,7 @@ export interface Auction {
   stripe_session_id: string | null;
   stripe_payment_intent: string | null;
   paid_at: string | null;
+  payment_expires_at: string | null;
   allow_best_offer: boolean;
   // Customer-created auction fields
   seller_user_id: string | null;

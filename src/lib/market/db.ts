@@ -17,11 +17,12 @@ const PAYMENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 // their TTL as expired, and cancels trades whose buyer never paid in time
 // (restoring the maker's filled_quantity so the order can match again).
 let lastSweepAt = 0;
-async function sweepExpired(): Promise<void> {
+async function sweepExpired(force = false): Promise<void> {
   // Throttle: at most once per minute per process. Reads are frequent;
-  // expiry only needs minute-level resolution.
+  // expiry only needs minute-level resolution. Cron entry point passes
+  // force=true so it always runs.
   const now = Date.now();
-  if (now - lastSweepAt < 60_000) return;
+  if (!force && now - lastSweepAt < 60_000) return;
   lastSweepAt = now;
 
   await query(
@@ -636,4 +637,79 @@ async function notifyTradeStatusChange(trade: MarketTrade): Promise<void> {
       sendStatusEmail({ email: m.to, cardName: card_name, subject: m.subject, heading: m.heading, body: m.body })
     )
   );
+}
+
+// ── Trade photos (verified / full_escrow tiers) ──
+
+export interface TradePhoto {
+  id: string;
+  trade_id: string;
+  uploaded_by: string;
+  url: string;
+  s3_key: string;
+  photo_type: string;
+  approved: boolean | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+// Returns { sellerId, buyerId } so callers can authorize seller-only or
+// participant-or-admin actions without re-querying.
+export async function getTradeParticipants(tradeId: string): Promise<{
+  sellerId: string; buyerId: string; escrowStatus: string;
+} | null> {
+  const r = await query(
+    `SELECT seller_id, buyer_id, escrow_status FROM market_trades WHERE id = $1`,
+    [tradeId]
+  );
+  if (r.rows.length === 0) return null;
+  return {
+    sellerId: r.rows[0].seller_id,
+    buyerId: r.rows[0].buyer_id,
+    escrowStatus: r.rows[0].escrow_status,
+  };
+}
+
+export async function addTradePhoto(data: {
+  tradeId: string;
+  uploadedBy: string;
+  url: string;
+  s3Key: string;
+  photoType?: string;
+}): Promise<TradePhoto> {
+  const r = await query(
+    `INSERT INTO trade_photos (trade_id, uploaded_by, url, s3_key, photo_type)
+     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+    [data.tradeId, data.uploadedBy, data.url, data.s3Key, data.photoType || "card"]
+  );
+  return r.rows[0] as TradePhoto;
+}
+
+export async function listTradePhotos(tradeId: string): Promise<TradePhoto[]> {
+  const r = await query(
+    `SELECT * FROM trade_photos WHERE trade_id = $1 ORDER BY created_at ASC`,
+    [tradeId]
+  );
+  return r.rows as TradePhoto[];
+}
+
+export async function reviewTradePhoto(photoId: string, approved: boolean): Promise<TradePhoto | null> {
+  const r = await query(
+    `UPDATE trade_photos SET approved = $2, reviewed_at = NOW()
+      WHERE id = $1 RETURNING *`,
+    [photoId, approved]
+  );
+  return (r.rows[0] as TradePhoto) ?? null;
+}
+
+export async function deleteTradePhoto(photoId: string): Promise<string | null> {
+  const r = await query(`DELETE FROM trade_photos WHERE id = $1 RETURNING s3_key`, [photoId]);
+  return r.rows[0]?.s3_key ?? null;
+}
+
+// ── Cron entry point ──
+// Bypasses the in-process throttle so the scheduled sweep always runs even
+// if a recent read already triggered one in this lambda instance.
+export async function runMarketMaintenance(): Promise<void> {
+  await sweepExpired(true);
 }
