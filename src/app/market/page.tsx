@@ -231,11 +231,19 @@ export default function MarketPage() {
     <div className="min-h-screen bg-neutral-950">
       <div className="max-w-[1400px] mx-auto px-4 py-8">
         {/* ========== HEADER ========== */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-black text-white mb-2">Card Market</h1>
-          <p className="text-neutral-400">
-            Buy and sell One Piece TCG cards. Every card has a market page.
-          </p>
+        <div className="mb-8 flex items-end justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-3xl font-black text-white mb-2">Card Market</h1>
+            <p className="text-neutral-400">
+              Buy and sell One Piece TCG cards. Every card has a market page.
+            </p>
+          </div>
+          <a
+            href="/market/pulse"
+            className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg text-sm text-amber-400 font-medium transition"
+          >
+            ⚡ Market Pulse
+          </a>
         </div>
 
         {/* ========== HERO BANNER — We Buy Every Card ========== */}
