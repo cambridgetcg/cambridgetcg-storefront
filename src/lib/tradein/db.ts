@@ -226,12 +226,24 @@ export async function getAllSubmissions(): Promise<{ submission: SubmissionRow; 
   return submissions;
 }
 
+// Map status → its per-status timestamp column. updated_at always bumps;
+// these only stamp on first hit (COALESCE keeps the original).
+const STATUS_TIMESTAMP_COL: Record<string, string> = {
+  received: "received_at",
+  grading:  "grading_at",
+  approved: "approved_at",
+  paid:     "paid_at",
+};
+
 export async function updateSubmissionStatus(
   reference: string,
   status: string
 ): Promise<SubmissionRow | null> {
+  const tsCol = STATUS_TIMESTAMP_COL[status];
+  const setExtra = tsCol ? `, ${tsCol} = COALESCE(${tsCol}, NOW())` : "";
   const result = await query(
-    `UPDATE tradein_submissions SET status = $1, updated_at = NOW() WHERE reference = $2 RETURNING *`,
+    `UPDATE tradein_submissions SET status = $1, updated_at = NOW()${setExtra}
+      WHERE reference = $2 RETURNING *`,
     [status, reference]
   );
   return result.rows.length > 0 ? (result.rows[0] as SubmissionRow) : null;

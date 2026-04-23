@@ -24,6 +24,12 @@ interface Submission {
   created_at: string;
 }
 
+interface TimelineStep {
+  key: string;
+  at: string;
+  label: string;
+}
+
 const STATUS_COLORS: Record<string, string> = {
   submitted: "bg-amber-500/20 text-amber-400",
   received: "bg-blue-500/20 text-blue-400",
@@ -36,7 +42,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export default function TradeInsPage() {
   const router = useRouter();
-  const [submissions, setSubmissions] = useState<{ submission: Submission; items: ItemRow[] }[]>([]);
+  const [submissions, setSubmissions] = useState<{ submission: Submission; items: ItemRow[]; timeline: TimelineStep[] }[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -78,7 +84,7 @@ export default function TradeInsPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {submissions.map(({ submission: s, items }) => (
+            {submissions.map(({ submission: s, items, timeline }) => (
               <div key={s.reference} className="bg-neutral-900 rounded-xl overflow-hidden">
                 <button
                   onClick={() => setExpanded(expanded === s.reference ? null : s.reference)}
@@ -106,10 +112,40 @@ export default function TradeInsPage() {
 
                 {expanded === s.reference && (
                   <div className="px-4 pb-4 border-t border-neutral-800">
-                    {s.quote_expires_at && (
-                      <p className="text-xs text-neutral-500 mt-3 mb-3">
-                        Quote valid until {new Date(s.quote_expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                      </p>
+                    {/* Lifecycle timeline — derived from per-status timestamps
+                        on the submission row. Rendered as a left-to-right
+                        stepper so the customer sees real progression rather
+                        than just "current status". */}
+                    {timeline.length > 0 && (
+                      <div className="mt-3 mb-4">
+                        <div className="flex items-center gap-1 overflow-x-auto pb-2">
+                          {timeline.map((step, i) => (
+                            <div key={step.key} className="flex items-center gap-1 shrink-0">
+                              <div className="flex flex-col items-center">
+                                <div className={`w-3 h-3 rounded-full ${i === timeline.length - 1 ? "bg-amber-400" : "bg-emerald-500"}`} />
+                                <span className="text-[10px] text-neutral-300 mt-1 whitespace-nowrap">{step.label}</span>
+                                <span className="text-[9px] text-neutral-600">
+                                  {new Date(step.at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                                </span>
+                              </div>
+                              {i < timeline.length - 1 && <div className="w-8 h-px bg-emerald-500/40 mb-3" />}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {s.quote_expires_at && s.status === "quoted" && (
+                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 mb-3 flex items-center justify-between gap-3">
+                        <p className="text-xs text-amber-300">
+                          Quote valid until {new Date(s.quote_expires_at).toLocaleString("en-GB")}
+                        </p>
+                        <Link
+                          href={`/trade-in/confirm/${s.reference}`}
+                          className="text-xs font-bold text-black bg-amber-500 px-3 py-1.5 rounded-md hover:bg-amber-400 transition shrink-0"
+                        >
+                          Accept / decline
+                        </Link>
+                      </div>
                     )}
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm min-w-[320px]">
