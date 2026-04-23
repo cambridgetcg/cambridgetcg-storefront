@@ -57,6 +57,8 @@ export interface MarketTrade {
   seller_ships_to: "buyer" | "ctcg" | null;
   dispute_window_hours: number | null;
   payout_hold_days: number | null;
+  payment_expires_at: string | null;
+  stripe_session_id: string | null;
   created_at: string;
   // Joined
   buyer_name?: string | null;

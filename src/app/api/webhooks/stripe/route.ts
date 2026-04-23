@@ -145,6 +145,72 @@ export async function POST(request: Request) {
       }
     }
 
+    // Handle P2P market trade payments. Move the trade past awaiting_payment
+    // and notify both parties. Tier decides whether the seller ships to the
+    // buyer (direct/verified) or to CTCG (full_escrow); the email tells them.
+    if (session.metadata?.type === "market_trade_payment" && session.metadata?.trade_id) {
+      try {
+        const tradeId = session.metadata.trade_id;
+        // 'awaiting_shipment' if seller ships to buyer, 'paid' if shipping to CTCG
+        // (admin will then mark received_by_ctcg). We default to awaiting_shipment
+        // since the seller's next action is "ship", regardless of destination.
+        const upd = await query(
+          `UPDATE market_trades
+              SET escrow_status = 'awaiting_shipment',
+                  buyer_paid_at = NOW(),
+                  stripe_session_id = $2,
+                  stripe_payment_intent = $3,
+                  updated_at = NOW()
+            WHERE id = $1 AND escrow_status = 'awaiting_payment'
+            RETURNING *`,
+          [
+            tradeId,
+            session.id,
+            typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id || null,
+          ]
+        );
+
+        if (upd.rows.length > 0) {
+          const trade = upd.rows[0];
+          // Look up emails + card name and fire paid notifications
+          const info = await query(
+            `SELECT bu.email AS buyer_email, su.email AS seller_email,
+                    COALESCE(o.card_name, t.sku) AS card_name
+               FROM market_trades t
+               JOIN users bu ON bu.id = t.buyer_id
+               JOIN users su ON su.id = t.seller_id
+               LEFT JOIN market_orders o ON o.id = t.bid_order_id
+              WHERE t.id = $1`,
+            [tradeId]
+          );
+          if (info.rows.length > 0) {
+            const { sendBuyerPaidEmail, sendSellerPaidEmail } = await import("@/lib/market/email");
+            const { formatPrice } = await import("@/lib/format");
+            const r = info.rows[0];
+            const total = parseFloat(trade.price) * trade.quantity;
+            const tier = trade.escrow_tier || "full_escrow";
+            sendBuyerPaidEmail({
+              email: r.buyer_email,
+              cardName: r.card_name,
+              price: formatPrice(total),
+              tier,
+            }).catch((e) => console.error("[webhook] Buyer paid email failed:", e));
+            sendSellerPaidEmail({
+              email: r.seller_email,
+              cardName: r.card_name,
+              price: formatPrice(total),
+              tier,
+              shipsTo: trade.seller_ships_to || "ctcg",
+              payout: formatPrice(parseFloat(trade.seller_payout)),
+            }).catch((e) => console.error("[webhook] Seller paid email failed:", e));
+          }
+        }
+        console.log(`[webhook] Market trade ${tradeId} marked paid`);
+      } catch (err) {
+        console.error("[webhook] Error processing market trade payment:", err);
+      }
+    }
+
     // Handle auction payments
     if (session.metadata?.type === "auction_payment" && session.metadata?.auction_id) {
       try {

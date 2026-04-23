@@ -22,6 +22,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   }
 
-  const trades = await getUserTrades(session.user.id);
-  return NextResponse.json({ trades });
+  const userId = session.user.id;
+  const trades = await getUserTrades(userId);
+  // Annotate each row with the requester's role so the client can render
+  // "Bought" vs "Sold" and decide whether to offer a Pay Now button. The
+  // pre-existing `isBuyer = !!buyer_name` heuristic was always true because
+  // both names are joined in.
+  const annotated = trades.map((t) => ({
+    ...t,
+    current_user_role: t.buyer_id === userId ? ("buyer" as const) : ("seller" as const),
+  }));
+  return NextResponse.json({ trades: annotated });
 }

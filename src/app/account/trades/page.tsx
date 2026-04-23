@@ -5,6 +5,11 @@ import { formatPrice } from "@/lib/format";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import type { MarketOrder, MarketTrade, EscrowStatus } from "@/lib/market/types";
 
+type TradeWithRole = MarketTrade & {
+  current_user_role: "buyer" | "seller";
+  payment_expires_at?: string | null;
+};
+
 const ESCROW_BADGES: Record<EscrowStatus, { label: string; color: string }> = {
   awaiting_payment: { label: "Awaiting Payment", color: "bg-amber-500/15 text-amber-400 border-amber-500/30" },
   paid: { label: "Paid", color: "bg-blue-500/15 text-blue-400 border-blue-500/30" },
@@ -41,7 +46,8 @@ function formatDate(iso: string) {
 export default function TradesPage() {
   const [tab, setTab] = useState<"orders" | "history">("orders");
   const [orders, setOrders] = useState<MarketOrder[]>([]);
-  const [trades, setTrades] = useState<MarketTrade[]>([]);
+  const [trades, setTrades] = useState<TradeWithRole[]>([]);
+  const [paying, setPaying] = useState<string | null>(null);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [loadingTrades, setLoadingTrades] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
@@ -216,11 +222,11 @@ export default function TradesPage() {
                 </thead>
                 <tbody>
                   {trades.map((trade) => {
-                    // Determine if current user is buyer or seller based on which name is present
-                    // We'll show "Bought" for buyer_name match, "Sold" otherwise
-                    // Since we don't know the user ID client-side, we'll check both IDs
-                    // The API should ideally tell us, but we can infer from the data
-                    const isBuyer = !!trade.buyer_name;
+                    const isBuyer = trade.current_user_role === "buyer";
+                    const canPay =
+                      isBuyer &&
+                      trade.escrow_status === "awaiting_payment" &&
+                      (!trade.payment_expires_at || new Date(trade.payment_expires_at) > new Date());
                     return (
                       <tr key={trade.id} className="border-b border-neutral-800/50 hover:bg-neutral-800/30 transition">
                         <td className="p-4">
@@ -247,7 +253,30 @@ export default function TradesPage() {
                         <td className="p-4 text-white font-mono">{formatPrice(Number(trade.price))}</td>
                         <td className="p-4 text-neutral-300">{trade.quantity}</td>
                         <td className="p-4">
-                          <EscrowBadge status={trade.escrow_status} />
+                          <div className="flex flex-col gap-1">
+                            <EscrowBadge status={trade.escrow_status} />
+                            {canPay && trade.payment_expires_at && (
+                              <button
+                                onClick={async () => {
+                                  setPaying(trade.id);
+                                  try {
+                                    const res = await fetch(`/api/market/trades/${trade.id}/pay`, { method: "POST" });
+                                    const data = await res.json();
+                                    if (res.ok && data.url) window.location.href = data.url;
+                                  } finally {
+                                    setPaying(null);
+                                  }
+                                }}
+                                disabled={paying === trade.id}
+                                className="px-3 py-1 text-xs font-bold bg-amber-500 text-black rounded-md hover:bg-amber-400 transition disabled:opacity-50"
+                              >
+                                {paying === trade.id ? "..." : "Pay Now"}
+                              </button>
+                            )}
+                            {trade.escrow_status === "awaiting_payment" && !isBuyer && (
+                              <span className="text-[10px] text-neutral-500">Awaiting buyer payment</span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-4 text-neutral-500 text-xs">{formatDate(trade.created_at)}</td>
                       </tr>

@@ -2,6 +2,87 @@ import { query } from "@/lib/db";
 import type { MarketOrder, MarketTrade, OrderBookEntry, OrderBookSummary, CardOrderBook } from "./types";
 import { COMMISSION_RATE } from "./types";
 import { postActivity, awardAchievement } from "@/lib/social/db";
+import { routeTrade } from "@/lib/escrow/service-tiers";
+import { sendBuyerMatchEmail, sendSellerMatchEmail, sendCancelEmail } from "./email";
+import { formatPrice } from "@/lib/format";
+
+// Default open-order TTL when the caller doesn't specify expires_at.
+// 30 days mirrors typical online marketplace conventions.
+const DEFAULT_ORDER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+// How long a buyer has to pay after a match before the trade auto-cancels.
+const PAYMENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+// ── Lazy expiry sweep ──
+// Cheap idempotent maintenance fired from any market read. Marks orders past
+// their TTL as expired, and cancels trades whose buyer never paid in time
+// (restoring the maker's filled_quantity so the order can match again).
+let lastSweepAt = 0;
+async function sweepExpired(): Promise<void> {
+  // Throttle: at most once per minute per process. Reads are frequent;
+  // expiry only needs minute-level resolution.
+  const now = Date.now();
+  if (now - lastSweepAt < 60_000) return;
+  lastSweepAt = now;
+
+  await query(
+    `UPDATE market_orders SET status = 'expired', updated_at = NOW()
+      WHERE status IN ('open', 'partially_filled')
+        AND expires_at IS NOT NULL AND expires_at <= NOW()`
+  );
+
+  // Trades whose payment window elapsed: cancel them and roll back the
+  // maker order's filled_quantity so the listing returns to the book.
+  const expiredTrades = await query(
+    `SELECT id, bid_order_id, ask_order_id, quantity, buyer_id, seller_id
+       FROM market_trades
+      WHERE escrow_status = 'awaiting_payment'
+        AND payment_expires_at IS NOT NULL
+        AND payment_expires_at <= NOW()`
+  );
+
+  for (const t of expiredTrades.rows) {
+    const upd = await query(
+      `UPDATE market_trades SET escrow_status = 'cancelled', updated_at = NOW()
+        WHERE id = $1 AND escrow_status = 'awaiting_payment' RETURNING id`,
+      [t.id]
+    );
+    if (upd.rows.length === 0) continue;
+    // Restore both orders. Taker order is the one created at match time —
+    // the cleanest behaviour is to restore qty on both and let either side
+    // re-match if still active.
+    for (const orderId of [t.bid_order_id, t.ask_order_id]) {
+      await query(
+        `UPDATE market_orders
+            SET filled_quantity = GREATEST(filled_quantity - $1, 0),
+                status = CASE
+                  WHEN GREATEST(filled_quantity - $1, 0) = 0 THEN 'open'
+                  WHEN GREATEST(filled_quantity - $1, 0) < quantity THEN 'partially_filled'
+                  ELSE status
+                END,
+                updated_at = NOW()
+          WHERE id = $2 AND status IN ('filled', 'partially_filled')`,
+        [t.quantity, orderId]
+      );
+    }
+
+    // Notify both parties about the cancellation
+    const participants = await query(
+      `SELECT u.email, t.sku, COALESCE(o.card_name, t.sku) AS card_name
+         FROM market_trades t
+         JOIN users u ON u.id = ANY(ARRAY[t.buyer_id, t.seller_id])
+         LEFT JOIN market_orders o ON o.id = t.bid_order_id
+        WHERE t.id = $1`,
+      [t.id]
+    );
+    for (const p of participants.rows) {
+      sendCancelEmail({
+        email: p.email,
+        cardName: p.card_name,
+        reason: "Buyer did not pay within the 24-hour payment window.",
+      }).catch((err) => console.error("[market] Cancel email failed:", err));
+    }
+  }
+}
 
 // ── Place order + attempt match ──
 
@@ -18,6 +99,10 @@ export async function placeOrder(data: {
   quantity: number;
   notes?: string;
 }): Promise<{ order: MarketOrder; trades: MarketTrade[] }> {
+  // Maintenance: opportunistically clear expired orders/trades before matching
+  // so this taker doesn't try to fill against stale rows.
+  await sweepExpired();
+
   const { default: pg } = await import("pg");
   const raw = process.env.DATABASE_URL || "";
   const cleaned = raw.replace(/[?&]sslmode=[^&]*/g, "").replace(/\?$/, "");
@@ -28,31 +113,48 @@ export async function placeOrder(data: {
   try {
     await client.query("BEGIN");
 
-    // Insert the order
+    // Insert the order with a default 30-day TTL
+    const expiresAt = new Date(Date.now() + DEFAULT_ORDER_TTL_MS).toISOString();
     const orderResult = await client.query(
-      `INSERT INTO market_orders (user_id, side, sku, card_name, set_code, set_name, image_url, condition, price, quantity, notes)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      `INSERT INTO market_orders (user_id, side, sku, card_name, set_code, set_name, image_url, condition, price, quantity, notes, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [data.userId, data.side, data.sku, data.cardName || null, data.setCode || null,
        data.setName || null, data.imageUrl || null, data.condition, data.price.toFixed(2),
-       data.quantity, data.notes || null]
+       data.quantity, data.notes || null, expiresAt]
     );
     let order = orderResult.rows[0] as MarketOrder;
     let remainingQty = data.quantity;
 
-    // Try to match against opposite side
-    // Bids match against asks (lowest ask first). Asks match against bids (highest bid first).
+    // Try to match against opposite side. Pull the maker's trust + flag state
+    // in the same query so we can route each resulting trade to its escrow
+    // tier without a follow-up round trip per match.
     const oppositeSide = data.side === "bid" ? "ask" : "bid";
     const priceOp = data.side === "bid" ? "<=" : ">=";
     const priceOrder = data.side === "bid" ? "ASC" : "DESC";
 
     const matchResult = await client.query(
-      `SELECT * FROM market_orders
-       WHERE sku = $1 AND side = $2 AND status IN ('open', 'partially_filled')
-         AND condition = $3 AND price ${priceOp} $4 AND user_id != $5
-       ORDER BY price ${priceOrder}, created_at ASC
-       FOR UPDATE`,
+      `SELECT o.*, u.trust_score AS maker_trust,
+              COALESCE(tp.is_flagged, false) AS maker_flagged
+         FROM market_orders o
+         JOIN users u ON u.id = o.user_id
+         LEFT JOIN trust_profiles tp ON tp.user_id = o.user_id
+        WHERE o.sku = $1 AND o.side = $2
+          AND o.status IN ('open', 'partially_filled')
+          AND o.condition = $3 AND o.price ${priceOp} $4 AND o.user_id != $5
+        ORDER BY o.price ${priceOrder}, o.created_at ASC
+        FOR UPDATE OF o`,
       [data.sku, oppositeSide, data.condition, data.price.toFixed(2), data.userId]
     );
+
+    // Taker's trust (one lookup, reused per match)
+    const takerTrustRow = await client.query(
+      `SELECT u.trust_score, COALESCE(tp.is_flagged, false) AS is_flagged
+         FROM users u LEFT JOIN trust_profiles tp ON tp.user_id = u.id
+        WHERE u.id = $1`,
+      [data.userId]
+    );
+    const takerTrust = takerTrustRow.rows[0]?.trust_score ?? 0;
+    const takerFlagged = takerTrustRow.rows[0]?.is_flagged ?? false;
 
     for (const match of matchResult.rows) {
       if (remainingQty <= 0) break;
@@ -61,20 +163,47 @@ export async function placeOrder(data: {
       const fillQty = Math.min(remainingQty, matchAvail);
       // Trade executes at the resting order's price (maker price)
       const tradePrice = parseFloat(match.price);
-      const commission = Math.round(tradePrice * fillQty * COMMISSION_RATE * 100) / 100;
-      const sellerPayout = tradePrice * fillQty - commission;
+      const tradeValue = tradePrice * fillQty;
+      const commission = Math.round(tradeValue * COMMISSION_RATE * 100) / 100;
+      const sellerPayout = tradeValue - commission;
 
       const buyerId = data.side === "bid" ? data.userId : match.user_id;
       const sellerId = data.side === "ask" ? data.userId : match.user_id;
       const bidOrderId = data.side === "bid" ? order.id : match.id;
       const askOrderId = data.side === "ask" ? order.id : match.id;
 
+      // Resolve escrow tier from trust + value + card metadata so admin and
+      // emails can branch on it. Stored on the trade row itself.
+      const sellerTrust = sellerId === data.userId ? takerTrust : (match.maker_trust ?? 0);
+      const buyerTrust  = buyerId  === data.userId ? takerTrust : (match.maker_trust ?? 0);
+      const sellerFlag  = sellerId === data.userId ? takerFlagged : !!match.maker_flagged;
+      const buyerFlag   = buyerId  === data.userId ? takerFlagged : !!match.maker_flagged;
+      const routing = await routeTrade({
+        tradeValue,
+        sellerTrustScore: sellerTrust,
+        buyerTrustScore: buyerTrust,
+        sellerIsFlagged: sellerFlag,
+        buyerIsFlagged: buyerFlag,
+        cardName: data.cardName || match.card_name || undefined,
+        condition: data.condition,
+      });
+
+      const paymentExpiresAt = new Date(Date.now() + PAYMENT_WINDOW_MS).toISOString();
+
       const tradeResult = await client.query(
-        `INSERT INTO market_trades (bid_order_id, ask_order_id, buyer_id, seller_id, sku, price, quantity, commission_rate, commission_amount, seller_payout)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        `INSERT INTO market_trades
+           (bid_order_id, ask_order_id, buyer_id, seller_id, sku, price, quantity,
+            commission_rate, commission_amount, seller_payout,
+            escrow_tier, requires_photos, requires_inspection, seller_ships_to,
+            dispute_window_hours, payout_hold_days, payment_expires_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+         RETURNING *`,
         [bidOrderId, askOrderId, buyerId, sellerId, data.sku,
          tradePrice.toFixed(2), fillQty, COMMISSION_RATE.toFixed(4),
-         commission.toFixed(2), sellerPayout.toFixed(2)]
+         commission.toFixed(2), sellerPayout.toFixed(2),
+         routing.tier, routing.requiresPhotos, routing.requiresInspection,
+         routing.sellerShipsTo, routing.disputeWindowHours, routing.payoutHoldDays,
+         paymentExpiresAt]
       );
       trades.push(tradeResult.rows[0] as MarketTrade);
 
@@ -100,8 +229,37 @@ export async function placeOrder(data: {
 
     await client.query("COMMIT");
 
-    // Social: activity feed + trade milestones (fire-and-forget after commit)
+    // Match notifications (fire-and-forget). One query for all participant emails.
     if (trades.length > 0) {
+      const participantIds = Array.from(new Set(trades.flatMap((t) => [t.buyer_id, t.seller_id])));
+      query(
+        `SELECT id, email FROM users WHERE id = ANY($1)`,
+        [participantIds]
+      ).then((r) => {
+        const emailById = new Map<string, string>(r.rows.map((u: { id: string; email: string }) => [u.id, u.email]));
+        const cardName = data.cardName || data.sku;
+        for (const t of trades) {
+          const buyerEmail = emailById.get(t.buyer_id);
+          const sellerEmail = emailById.get(t.seller_id);
+          const total = parseFloat(t.price) * t.quantity;
+          if (buyerEmail) {
+            sendBuyerMatchEmail({
+              email: buyerEmail,
+              cardName,
+              price: formatPrice(total),
+              expiresAt: t.payment_expires_at || new Date().toISOString(),
+            }).catch((err) => console.error("[market] Buyer match email failed:", err));
+          }
+          if (sellerEmail) {
+            sendSellerMatchEmail({
+              email: sellerEmail,
+              cardName,
+              price: formatPrice(total),
+            }).catch((err) => console.error("[market] Seller match email failed:", err));
+          }
+        }
+      }).catch(() => {});
+
       for (const trade of trades) {
         postActivity(trade.buyer_id, "trade_completed", "Completed a P2P trade").catch(() => {});
         postActivity(trade.seller_id, "trade_completed", "Completed a P2P trade").catch(() => {});
@@ -146,6 +304,7 @@ export async function cancelOrder(orderId: string, userId: string): Promise<bool
 // ── Order book for a single card ──
 
 export async function getCardOrderBook(sku: string): Promise<CardOrderBook> {
+  await sweepExpired();
   // Aggregate bids (descending price)
   const bidsResult = await query(
     `SELECT price, SUM(quantity - filled_quantity) as total_quantity, COUNT(*) as order_count
@@ -209,6 +368,7 @@ export async function getMarketSummaries(filters: {
   limit?: number;
   offset?: number;
 }): Promise<{ cards: OrderBookSummary[]; total: number }> {
+  await sweepExpired();
   const limit = filters.limit || 24;
   const offset = filters.offset || 0;
 
@@ -283,6 +443,7 @@ export async function getMarketSummaries(filters: {
 // ── User's orders ──
 
 export async function getUserOrders(userId: string, status?: string): Promise<MarketOrder[]> {
+  await sweepExpired();
   const params: unknown[] = [userId];
   let where = "WHERE user_id = $1";
   if (status === "open") {
@@ -301,6 +462,7 @@ export async function getUserOrders(userId: string, status?: string): Promise<Ma
 // ── User's trades ──
 
 export async function getUserTrades(userId: string): Promise<MarketTrade[]> {
+  await sweepExpired();
   const result = await query(
     `SELECT t.*,
        bu.name as buyer_name, bu.email as buyer_email,
@@ -384,5 +546,94 @@ export async function updateEscrowStatus(tradeId: string, status: string, data?:
     `UPDATE market_trades SET ${fields.join(", ")} WHERE id = $${idx} RETURNING *`,
     values
   );
-  return result.rows[0] as MarketTrade ?? null;
+  const trade = (result.rows[0] as MarketTrade) ?? null;
+
+  // Status-transition notifications. Fire-and-forget; failures don't block
+  // the admin's update.
+  if (trade) {
+    notifyTradeStatusChange(trade).catch((err) =>
+      console.error("[market] Status email failed:", err)
+    );
+  }
+
+  return trade;
+}
+
+async function notifyTradeStatusChange(trade: MarketTrade): Promise<void> {
+  // Only send for transitions that the parties care about — skip noisy
+  // intermediate states like "received_by_ctcg" that the buyer doesn't need.
+  const relevant = new Set(["shipped_to_ctcg", "verified", "shipped_to_buyer", "completed", "disputed", "refunded"]);
+  if (!relevant.has(trade.escrow_status)) return;
+
+  const { sendStatusEmail } = await import("./email");
+
+  const info = await query(
+    `SELECT bu.email AS buyer_email, su.email AS seller_email,
+            COALESCE(o.card_name, t.sku) AS card_name
+       FROM market_trades t
+       JOIN users bu ON bu.id = t.buyer_id
+       JOIN users su ON su.id = t.seller_id
+       LEFT JOIN market_orders o ON o.id = t.bid_order_id
+      WHERE t.id = $1`,
+    [trade.id]
+  );
+  if (info.rows.length === 0) return;
+  const { buyer_email, seller_email, card_name } = info.rows[0];
+
+  type Msg = { to: string; subject: string; heading: string; body: string };
+  const messages: Msg[] = [];
+
+  switch (trade.escrow_status) {
+    case "shipped_to_ctcg":
+      messages.push({
+        to: buyer_email, subject: `Seller shipped your card to us`,
+        heading: "Card on its way to Cambridge TCG",
+        body: `The seller has shipped <strong>${card_name}</strong> to us for verification. We'll inspect it and forward it to you.`,
+      });
+      break;
+    case "verified":
+      messages.push({
+        to: buyer_email, subject: `${card_name} verified — shipping to you next`,
+        heading: "Card verified by Cambridge TCG",
+        body: `We've inspected and verified <strong>${card_name}</strong>. Shipping it to you next.`,
+      });
+      break;
+    case "shipped_to_buyer": {
+      const tracking = trade.tracking_to_buyer ? ` Tracking: <strong>${trade.tracking_to_buyer}</strong>.` : "";
+      messages.push({
+        to: buyer_email, subject: `${card_name} is on its way`,
+        heading: "Your card has shipped",
+        body: `<strong>${card_name}</strong> is on its way to you.${tracking}`,
+      });
+      break;
+    }
+    case "completed":
+      messages.push(
+        { to: buyer_email, subject: `Trade complete: ${card_name}`,
+          heading: "Trade complete", body: `Your trade for <strong>${card_name}</strong> is complete. Thanks for trading on Cambridge TCG.` },
+        { to: seller_email, subject: `Trade complete: ${card_name}`,
+          heading: "Trade complete — payout released",
+          body: `Trade for <strong>${card_name}</strong> is complete. Your payout of <strong>£${trade.seller_payout}</strong> will be released after the payout-hold window.` }
+      );
+      break;
+    case "disputed":
+      messages.push(
+        { to: buyer_email, subject: `Dispute opened: ${card_name}`, heading: "Dispute opened", body: `A dispute has been opened on your trade for <strong>${card_name}</strong>. We'll be in touch.` },
+        { to: seller_email, subject: `Dispute opened: ${card_name}`, heading: "Dispute opened", body: `A dispute has been opened on your sale of <strong>${card_name}</strong>. We'll be in touch.` }
+      );
+      break;
+    case "refunded":
+      messages.push({
+        to: buyer_email, subject: `Refund issued: ${card_name}`,
+        heading: "Refund issued",
+        body: `A refund has been issued for your trade of <strong>${card_name}</strong>.`,
+      });
+      break;
+  }
+
+  await Promise.allSettled(
+    messages.map((m) =>
+      sendStatusEmail({ email: m.to, cardName: card_name, subject: m.subject, heading: m.heading, body: m.body })
+    )
+  );
 }
