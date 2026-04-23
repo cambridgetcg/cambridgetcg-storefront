@@ -226,6 +226,22 @@ export async function POST(request: Request) {
       }
     }
 
+    // Handle lot purchases (market_lot_payment)
+    if (session.metadata?.type === "market_lot_payment" && session.metadata?.lot_trade_id) {
+      try {
+        const { markLotTradePaid } = await import("@/lib/market/lots");
+        const tradeId = session.metadata.lot_trade_id;
+        const paymentIntent =
+          typeof session.payment_intent === "string"
+            ? session.payment_intent
+            : session.payment_intent?.id || null;
+        await markLotTradePaid(tradeId, session.id, paymentIntent);
+        console.log(`[webhook] Lot trade ${tradeId} marked paid`);
+      } catch (err) {
+        console.error("[webhook] Error processing lot payment:", err);
+      }
+    }
+
     // Handle auction payments
     if (session.metadata?.type === "auction_payment" && session.metadata?.auction_id) {
       try {

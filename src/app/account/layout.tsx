@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { href: "/account/trade-ins", label: "Trade-Ins" },
   { href: "/account/trades", label: "Trades" },
   { href: "/account/auctions", label: "My Auctions" },
+  { href: "/account/lots", label: "My Lots" },
   { href: "/account/watchlist", label: "Watchlist" },
   { href: "/account/demand", label: "Demand Signals" },
   { href: "/account/payouts", label: "Payouts" },

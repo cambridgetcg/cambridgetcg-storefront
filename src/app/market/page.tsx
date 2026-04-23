@@ -246,6 +246,12 @@ export default function MarketPage() {
               ⚡ Market Pulse
             </a>
             <a
+              href="/market/lots"
+              className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg text-sm text-purple-400 font-medium transition"
+            >
+              📦 Lots
+            </a>
+            <a
               href="/leaderboards"
               className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg text-sm text-emerald-400 font-medium transition"
             >
