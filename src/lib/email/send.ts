@@ -10,15 +10,19 @@
 // - Preference-aware: if the caller passes `unsubscribe: { userId, category
 //   }`, the send is skipped when the user has opted out, and the resulting
 //   email automatically carries:
-//     • a List-Unsubscribe header (RFC 2369 + 8058 one-click)
-//     • a footer sentence with the click-through
+//     • a footer unsubscribe link (CAN-SPAM / GDPR visible)
+//     • List-Unsubscribe + List-Unsubscribe-Post headers (RFC 2369 +
+//       RFC 8058 one-click), which makes Gmail and Apple Mail render a
+//       native "Unsubscribe" button at the top of the message
 //   Essential emails (magic links, receipts) omit the param and send
 //   unconditionally.
 // - No queueing, no retries yet. Good enough for immediate-trigger
 //   transactional emails. See scheduleEmail()/drainEmailQueue() for the
 //   scheduled variant.
 
-import { SendEmailCommand } from "@aws-sdk/client-ses";
+import { SendRawEmailCommand } from "@aws-sdk/client-ses";
+import MailComposer from "nodemailer/lib/mail-composer";
+import type Mail from "nodemailer/lib/mailer";
 import { sesClient } from "./client";
 import {
   canSendEvent,
@@ -117,14 +121,11 @@ export async function sendEmail(args: SendEmailArgs): Promise<SendResult> {
     return { ok: false, error: "AWS credentials not configured" };
   }
 
-  // When opt-out is declared, embed a footer unsubscribe link.
-  //
-  // The RFC 2369 / 8058 `List-Unsubscribe` header (which makes Gmail and
-  // Apple Mail render a native "Unsubscribe" button in the UI) cannot be
-  // attached through SendEmailCommand — it's a raw-message feature that
-  // needs SendRawEmailCommand. Planned for a later pass; the footer link
-  // covers CAN-SPAM / GDPR compliance in the meantime.
+  // Embed footer unsubscribe link + compute the one-click URL for the
+  // RFC 8058 header. Both use the same signed token so copy-paste of
+  // either path produces identical behaviour.
   let html = args.html;
+  let oneClickUrl: string | null = null;
   if (args.unsubscribe) {
     const { CATEGORY_LABELS } = await import("./preferences");
     const token = makeUnsubscribeToken(args.unsubscribe.userId, args.unsubscribe.category);
@@ -133,21 +134,48 @@ export async function sendEmail(args: SendEmailArgs): Promise<SendResult> {
       token,
       CATEGORY_LABELS[args.unsubscribe.category],
     );
+    oneClickUrl = unsubscribeUrl(token);
+  }
+
+  // Assemble MIME via nodemailer, then hand the raw buffer to SES. This is
+  // the canonical way to attach List-Unsubscribe headers in AWS SES; the
+  // simpler SendEmailCommand path does not support custom headers.
+  const mailOptions: Mail.Options = {
+    from: `${displayName} <${sender.email}>`,
+    to: args.to,
+    subject: args.subject,
+    html,
+    text: args.text ?? stripTags(html),
+    replyTo: args.replyTo,
+  };
+  if (oneClickUrl) {
+    // RFC 8058: the Post header tells Gmail/Apple they can POST to the URL
+    // with body "List-Unsubscribe=One-Click" to unsubscribe in one tap.
+    mailOptions.headers = {
+      "List-Unsubscribe": `<${oneClickUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    };
+  }
+  const composer = new MailComposer(mailOptions);
+
+  let raw: Buffer;
+  try {
+    raw = await new Promise<Buffer>((resolve, reject) => {
+      composer.compile().build((err, message) => {
+        if (err) reject(err);
+        else resolve(message);
+      });
+    });
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 
   try {
     const result = await sesClient.send(
-      new SendEmailCommand({
+      new SendRawEmailCommand({
         Source: `${displayName} <${sender.email}>`,
-        Destination: { ToAddresses: [args.to] },
-        ReplyToAddresses: args.replyTo ? [args.replyTo] : undefined,
-        Message: {
-          Subject: { Data: args.subject, Charset: "UTF-8" },
-          Body: {
-            Html: { Data: html, Charset: "UTF-8" },
-            Text: { Data: args.text ?? stripTags(html), Charset: "UTF-8" },
-          },
-        },
+        Destinations: [args.to],
+        RawMessage: { Data: raw },
       }),
     );
     return { ok: true, messageId: result.MessageId ?? "" };
