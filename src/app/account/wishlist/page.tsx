@@ -48,18 +48,45 @@ export default function WishlistPage() {
   const [editPrice, setEditPrice] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [showCsv, setShowCsv] = useState(false);
+  const [suggestions, setSuggestions] = useState<Record<string, { value: number; explanation: string } | null>>({});
+  const [profile, setProfile] = useState<{ username: string | null; is_public: boolean } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function fetchSuggestion(sku: string) {
+    if (suggestions[sku] !== undefined) return;
+    try {
+      const res = await fetch(`/api/social/wishlist/suggest?sku=${encodeURIComponent(sku)}`);
+      if (!res.ok) { setSuggestions((p) => ({ ...p, [sku]: null })); return; }
+      const d = await res.json();
+      setSuggestions((p) => ({
+        ...p,
+        [sku]: d.suggestion != null ? { value: d.suggestion, explanation: d.explanation ?? "" } : null,
+      }));
+    } catch {
+      setSuggestions((p) => ({ ...p, [sku]: null }));
+    }
+  }
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await fetch("/api/social/wishlist?enrich=1");
-      if (!res.ok) {
-        if (res.status === 401) setError("Sign in required.");
-        else setError(`Failed (HTTP ${res.status})`);
+      const [wishRes, profRes] = await Promise.all([
+        fetch("/api/social/wishlist?enrich=1"),
+        fetch("/api/social/profile").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      ]);
+      if (!wishRes.ok) {
+        if (wishRes.status === 401) setError("Sign in required.");
+        else setError(`Failed (HTTP ${wishRes.status})`);
         return;
       }
-      const d = await res.json();
+      const d = await wishRes.json();
       setItems(d.wishlist ?? []);
+      if (profRes?.profile) {
+        setProfile({
+          username: profRes.profile.username ?? null,
+          is_public: Boolean(profRes.profile.is_public),
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -184,6 +211,48 @@ export default function WishlistPage() {
           </div>
         )}
 
+        {/* Gift-link share banner */}
+        {profile && items.length > 0 && (
+          <div className="mb-4 bg-gradient-to-r from-fuchsia-500/10 via-neutral-900 to-amber-500/10 border border-fuchsia-500/20 rounded-xl px-4 py-3 flex items-center justify-between flex-wrap gap-3 text-sm">
+            <div className="min-w-0">
+              <p className="text-[10px] uppercase tracking-wider text-fuchsia-400 font-bold">
+                🎁 Gift this wishlist
+              </p>
+              {profile.username && profile.is_public ? (
+                <p className="text-neutral-300 mt-0.5 truncate">
+                  Share{" "}
+                  <Link href={`/u/${profile.username}`} className="text-fuchsia-300 underline hover:text-fuchsia-200">
+                    /u/{profile.username}
+                  </Link>{" "}
+                  — your wishlist is visible at the bottom of your public profile.
+                </p>
+              ) : (
+                <p className="text-xs text-neutral-500 mt-0.5">
+                  Pick a username + make your profile public in{" "}
+                  <Link href="/account/profile" className="text-fuchsia-400 hover:text-fuchsia-300 underline">
+                    settings
+                  </Link>{" "}
+                  to get a shareable URL.
+                </p>
+              )}
+            </div>
+            {profile.username && profile.is_public && (
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/u/${profile.username}`;
+                  navigator.clipboard.writeText(url).then(
+                    () => { setCopied(true); setTimeout(() => setCopied(false), 2000); },
+                    () => {},
+                  );
+                }}
+                className="text-xs bg-fuchsia-500 hover:bg-fuchsia-400 text-black font-bold rounded px-3 py-1.5 transition-colors whitespace-nowrap"
+              >
+                {copied ? "Copied!" : "Copy gift link"}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Filter tabs */}
         <div className="flex gap-1 mb-6 text-xs overflow-x-auto">
           {(["pending", "matched", "fulfilled", "all"] as const).map((f) => (
@@ -256,29 +325,63 @@ export default function WishlistPage() {
 
                     {/* Max price — editable */}
                     {isEditing ? (
-                      <div className="flex items-center gap-1 mt-1">
-                        <span className="text-xs text-neutral-500">Max £</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={editPrice}
-                          onChange={(e) => setEditPrice(e.target.value)}
-                          className="bg-neutral-800 border border-neutral-700 rounded text-xs px-2 py-1 w-16 focus:outline-none focus:border-amber-500"
-                          autoFocus
-                        />
-                        <button
-                          onClick={() => saveMaxPrice(item)}
-                          disabled={busy === item.id}
-                          className="text-[11px] bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded px-2 py-1"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => { setEditingId(null); setError(null); }}
-                          className="text-[11px] text-neutral-500 hover:text-white"
-                        >
-                          Cancel
-                        </button>
+                      <div className="mt-1">
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-neutral-500">Max £</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={editPrice}
+                            onChange={(e) => setEditPrice(e.target.value)}
+                            className="bg-neutral-800 border border-neutral-700 rounded text-xs px-2 py-1 w-16 focus:outline-none focus:border-amber-500"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => saveMaxPrice(item)}
+                            disabled={busy === item.id}
+                            className="text-[11px] bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded px-2 py-1"
+                          >
+                            Save
+                          </button>
+                          <button
+                            onClick={() => { setEditingId(null); setError(null); }}
+                            className="text-[11px] text-neutral-500 hover:text-white"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                        {item.sku && (() => {
+                          const s = suggestions[item.sku];
+                          if (s === undefined) {
+                            return (
+                              <button
+                                onClick={() => item.sku && fetchSuggestion(item.sku)}
+                                className="text-[10px] text-fuchsia-400 hover:text-fuchsia-300 underline mt-1"
+                              >
+                                Suggest target from 30-day history
+                              </button>
+                            );
+                          }
+                          if (s == null) {
+                            return (
+                              <p className="text-[10px] text-neutral-600 mt-1">
+                                Not enough price history yet.
+                              </p>
+                            );
+                          }
+                          return (
+                            <div className="mt-1 text-[10px] text-neutral-400">
+                              Suggested{" "}
+                              <button
+                                onClick={() => setEditPrice(s.value.toString())}
+                                className="text-fuchsia-400 hover:text-fuchsia-300 font-semibold underline"
+                              >
+                                £{s.value.toFixed(2)}
+                              </button>
+                              <span className="text-neutral-600"> — {s.explanation}</span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <div className="flex items-center gap-1 mt-1 text-xs">
