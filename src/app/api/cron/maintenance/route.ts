@@ -5,6 +5,7 @@ import { runBountyExpiry } from "@/lib/bounty/db";
 import { runPayoutSweep } from "@/lib/payouts/sweep";
 import { runAlertSweep } from "@/lib/market/watches";
 import { drainEmailQueue } from "@/lib/email/queue";
+import { runStreakAtRiskSweep } from "@/lib/email/streak-sweep";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -25,6 +26,13 @@ export async function GET(request: Request) {
   const start = Date.now();
   // Run pipelines independently — a failure in one shouldn't block the
   // others. Per-pipeline status is returned so the cron log is debuggable.
+  // Streak sweep runs once per UTC day (20:00) — cheap guard so every
+  // minute doesn't re-run it. scheduleEmail() is idempotent by key, so
+  // even a double-trigger would be harmless, but we skip the SELECT.
+  const now = new Date();
+  const runStreakSweep =
+    now.getUTCHours() === 20 && now.getUTCMinutes() < 2;
+
   const results = await Promise.allSettled([
     runMarketMaintenance(),
     runAuctionMaintenance(),
@@ -32,9 +40,10 @@ export async function GET(request: Request) {
     runPayoutSweep(),
     runAlertSweep(),
     drainEmailQueue({ limit: 100 }),
+    runStreakSweep ? runStreakAtRiskSweep() : Promise.resolve(null),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep] = results;
 
   const status = {
     market: market.status,
@@ -55,6 +64,12 @@ export async function GET(request: Request) {
       emails.status === "fulfilled"
         ? { status: "fulfilled", ...emails.value }
         : { status: "rejected" },
+    streakSweep:
+      streakSweep.status === "fulfilled" && streakSweep.value != null
+        ? { status: "fulfilled", ...streakSweep.value }
+        : streakSweep.status === "rejected"
+          ? { status: "rejected" }
+          : { status: "skipped" },
     durationMs: Date.now() - start,
   };
 
@@ -93,6 +108,13 @@ export async function GET(request: Request) {
     for (const e of emails.value.errors) {
       console.error(`[cron] email queue error ${e.id} (${e.event}): ${e.error}`);
     }
+  }
+  if (streakSweep.status === "rejected") console.error("[cron] streak sweep failed:", streakSweep.reason);
+  else if (streakSweep.value != null && streakSweep.value.atRiskCount > 0) {
+    console.log(
+      `[cron] streak sweep: ${streakSweep.value.atRiskCount} at-risk, ` +
+      `${streakSweep.value.queuedCount} queued, ${streakSweep.value.errors} errors`,
+    );
   }
 
   return NextResponse.json(status);

@@ -78,6 +78,9 @@ async function loadHandlers(): Promise<void> {
   if (!HANDLERS["vault_expiring_soon"]) {
     await import("./handlers/vault-expiring-soon");
   }
+  if (!HANDLERS["streak_at_risk"]) {
+    await import("./handlers/streak-at-risk");
+  }
 }
 
 // ── Schedule ────────────────────────────────────────────────────────────
