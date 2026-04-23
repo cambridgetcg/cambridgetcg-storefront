@@ -8,6 +8,8 @@ import { formatPrice } from "@/lib/format";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import type { ValuatedCard, PortfolioSummary, PortfolioSnapshot, ListingAction } from "@/lib/portfolio/types";
 import PortfolioAnalytics from "@/components/portfolio/PortfolioAnalytics";
+import MoversPanel from "@/components/portfolio/MoversPanel";
+import ValueChart from "@/components/portfolio/ValueChart";
 
 type SortKey = "value" | "pnl" | "recent";
 
@@ -100,9 +102,6 @@ export default function PortfolioPage() {
     );
   }
 
-  // Sparkline helpers
-  const maxVal = Math.max(...snapshots.map((s) => parseFloat(s.total_value) || 0), 1);
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -156,23 +155,15 @@ export default function PortfolioPage() {
       )}
 
       {/* Value History Sparkline */}
-      {snapshots.length > 1 && (
-        <div className="bg-neutral-900 rounded-xl p-4 mb-6">
-          <p className="text-xs text-neutral-500 uppercase tracking-wide mb-3">30-Day Value History</p>
-          <div className="flex items-end gap-[2px] h-16">
-            {snapshots.map((s, i) => {
-              const val = parseFloat(s.total_value) || 0;
-              const pct = Math.max((val / maxVal) * 100, 2);
-              return (
-                <div
-                  key={i}
-                  className="flex-1 bg-amber-500/60 hover:bg-amber-400 rounded-t transition-colors"
-                  style={{ height: `${pct}%` }}
-                  title={`${s.snapshot_date}: ${formatPrice(val)}`}
-                />
-              );
-            })}
-          </div>
+      {/* Interactive value chart (7d / 30d / 90d toggle) */}
+      <div className="mb-6">
+        <ValueChart initial={snapshots} />
+      </div>
+
+      {/* Movers over the last 7 days */}
+      {cards.length > 0 && (
+        <div className="mb-6">
+          <MoversPanel cards={cards} trends={trends} window={7} />
         </div>
       )}
 
