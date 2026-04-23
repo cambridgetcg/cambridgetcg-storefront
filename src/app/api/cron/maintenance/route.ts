@@ -10,6 +10,7 @@ import { sendAdminWeeklyDigest } from "@/lib/email/admin-digest";
 import { runSellerRestockDigest, runBuyerWatchlistDigest } from "@/lib/market/digests";
 import { runLiquidityMining } from "@/lib/market/liquidity";
 import { runTradeinSweep } from "@/lib/tradein/sweep";
+import { runPriceHistoryTick } from "@/lib/portfolio/price-history";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -40,6 +41,11 @@ export async function GET(request: Request) {
   // email_queue; sends synchronously via SES.
   const runDigest =
     now.getUTCDay() === 1 && now.getUTCHours() === 9 && now.getUTCMinutes() < 2;
+  // Price history tick — once per UTC day (03:00), avoids hitting the
+  // wholesale API more than needed. runPriceHistoryTick is internally
+  // idempotent-per-day so over-triggering is harmless.
+  const runPriceTick =
+    now.getUTCHours() === 3 && now.getUTCMinutes() < 2;
 
   const results = await Promise.allSettled([
     runMarketMaintenance(),
@@ -57,9 +63,11 @@ export async function GET(request: Request) {
     runLiquidityMining(),
     // Trade-in: expire quotes past their 24h response window + email
     runTradeinSweep(),
+    // Portfolio price-history sampler
+    runPriceTick ? runPriceHistoryTick() : Promise.resolve(null),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick] = results;
 
   const status = {
     market: market.status,
@@ -108,6 +116,12 @@ export async function GET(request: Request) {
       tradeinSweep.status === "fulfilled"
         ? { status: "fulfilled", ...tradeinSweep.value }
         : { status: "rejected" },
+    priceTick:
+      priceTick.status === "fulfilled" && priceTick.value != null
+        ? { status: "fulfilled", ...priceTick.value }
+        : priceTick.status === "rejected"
+          ? { status: "rejected" }
+          : { status: "skipped" },
     durationMs: Date.now() - start,
   };
 

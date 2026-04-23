@@ -23,15 +23,18 @@ export default function PortfolioPage() {
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+  const [trends, setTrends] = useState<Record<string, { d7: number | null; d30: number | null }>>({});
 
   const load = useCallback(() => {
     Promise.all([
       fetch("/api/portfolio").then((r) => r.json()),
       fetch("/api/portfolio/history?days=30").then((r) => r.json()),
-    ]).then(([portfolio, history]) => {
+      fetch("/api/portfolio/trends").then((r) => r.json()).catch(() => ({ trends: {} })),
+    ]).then(([portfolio, history, trendsData]) => {
       setCards(portfolio.cards || []);
       setSummary(portfolio.summary || null);
       setSnapshots(history.snapshots || []);
+      setTrends(trendsData.trends || {});
       setLoading(false);
     });
   }, []);
@@ -255,6 +258,33 @@ export default function PortfolioPage() {
                   <span className="text-neutral-500">{card.quantity} x {card.market_price != null ? formatPrice(card.market_price) : "—"}</span>
                   <span className="text-white font-semibold ml-1">= {formatPrice(card.current_value)}</span>
                 </div>
+
+                {/* Price trend — only rendered if we have history data */}
+                {(() => {
+                  const t = trends[card.sku];
+                  if (!t || (t.d7 == null && t.d30 == null)) return null;
+                  const chip = (label: string, val: number | null) => {
+                    if (val == null) return null;
+                    const positive = val >= 0;
+                    return (
+                      <span
+                        key={label}
+                        className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                          positive ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"
+                        }`}
+                        title={`${label === "7d" ? "Last 7 days" : "Last 30 days"} spot change`}
+                      >
+                        {label} {positive ? "+" : ""}{val.toFixed(1)}%
+                      </span>
+                    );
+                  };
+                  return (
+                    <div className="flex items-center gap-1 mb-1">
+                      {chip("7d", t.d7)}
+                      {chip("30d", t.d30)}
+                    </div>
+                  );
+                })()}
 
                 {/* P&L */}
                 <div className="text-xs mb-3">
