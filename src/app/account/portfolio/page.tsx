@@ -10,6 +10,7 @@ import type { ValuatedCard, PortfolioSummary, PortfolioSnapshot, ListingAction }
 import PortfolioAnalytics from "@/components/portfolio/PortfolioAnalytics";
 import MoversPanel from "@/components/portfolio/MoversPanel";
 import ValueChart from "@/components/portfolio/ValueChart";
+import CsvImport, { type ParsedRow as CsvRow } from "@/components/portfolio/CsvImport";
 
 type SortKey = "value" | "pnl" | "recent";
 
@@ -26,6 +27,7 @@ export default function PortfolioPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [trends, setTrends] = useState<Record<string, { d7: number | null; d30: number | null }>>({});
+  const [showCsv, setShowCsv] = useState(false);
 
   const load = useCallback(() => {
     Promise.all([
@@ -106,12 +108,20 @@ export default function PortfolioPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-white">Portfolio</h1>
-        <Link
-          href="/account/portfolio/add"
-          className="px-4 py-2 bg-amber-500 text-black font-semibold rounded-lg hover:bg-amber-400 transition text-sm"
-        >
-          Add Cards
-        </Link>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowCsv(true)}
+            className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-medium rounded-lg transition text-sm"
+          >
+            Import CSV
+          </button>
+          <Link
+            href="/account/portfolio/add"
+            className="px-4 py-2 bg-amber-500 text-black font-semibold rounded-lg hover:bg-amber-400 transition text-sm"
+          >
+            Add Cards
+          </Link>
+        </div>
       </div>
 
       {/* Summary Bar */}
@@ -430,6 +440,72 @@ export default function PortfolioPage() {
         onConfirm={() => { pendingAction?.(); setConfirmOpen(false); setPendingAction(null); }}
         onCancel={() => { setConfirmOpen(false); setPendingAction(null); }}
       />
+
+      {showCsv && (
+        <CsvImport
+          onClose={() => setShowCsv(false)}
+          onImport={async (rows: CsvRow[]) => {
+            // Resolve each SKU against the catalog, then POST per row.
+            const failed: string[] = [];
+            let added = 0;
+
+            // Resolve all in parallel — the wholesale API is fast.
+            const resolved = await Promise.all(
+              rows.map(async (r) => {
+                try {
+                  const res = await fetch(
+                    `/api/portfolio/search?q=${encodeURIComponent(r.sku)}`,
+                  );
+                  if (!res.ok) return { row: r, card: null };
+                  const d = await res.json();
+                  const results = (d.results as Array<{
+                    sku: string; card_name: string; card_number: string;
+                    set_code: string; set_name: string; image_url: string | null;
+                    rarity: string | null;
+                  }>) ?? [];
+                  const exact = results.find((c) => c.sku.toUpperCase() === r.sku);
+                  return { row: r, card: exact ?? results[0] ?? null };
+                } catch {
+                  return { row: r, card: null };
+                }
+              }),
+            );
+
+            // POST each resolved card to /api/portfolio (addCard upserts).
+            for (const { row, card } of resolved) {
+              if (!card) { failed.push(row.sku); continue; }
+              try {
+                const res = await fetch("/api/portfolio", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    sku: card.sku,
+                    cardName: card.card_name,
+                    cardNumber: card.card_number,
+                    setCode: card.set_code,
+                    setName: card.set_name,
+                    imageUrl: card.image_url,
+                    rarity: card.rarity,
+                    condition: row.condition,
+                    quantity: row.quantity,
+                    acquisitionPrice: row.acquisitionPrice,
+                    acquiredAt: row.acquiredAt,
+                    notes: row.notes,
+                  }),
+                });
+                if (res.ok) added += 1;
+                else failed.push(row.sku);
+              } catch {
+                failed.push(row.sku);
+              }
+            }
+
+            // Refresh the portfolio once everything's been posted.
+            load();
+            return { added, failed };
+          }}
+        />
+      )}
     </div>
   );
 }
