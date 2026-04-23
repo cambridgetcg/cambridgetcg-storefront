@@ -4,6 +4,7 @@ import {
   getAllSubmissions,
   updateSubmissionStatus,
   issueTradeinCreditIfDue,
+  payTradeinCashIfDue,
 } from "@/lib/tradein/db";
 import { sendTradeinStatusEmail } from "@/lib/tradein/email";
 
@@ -39,17 +40,24 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Submission not found." }, { status: 404 });
     }
 
-    // On transition to 'paid', issue store credit if the submission has a
-    // credit component + linked user. Idempotent (credit_issued_at column
-    // gates re-runs); admin can flip status back and forth without
-    // double-crediting.
+    // On transition to 'paid', try BOTH legs of payout. Each is idempotent
+    // (credit_issued_at and cash_paid_at gate re-runs), so admin can flip
+    // status back and forth without double-paying. Cash leg requires
+    // Stripe Connect onboarding; if absent, we fall back to manual.
     let creditResult: Awaited<ReturnType<typeof issueTradeinCreditIfDue>> | null = null;
+    let cashResult: Awaited<ReturnType<typeof payTradeinCashIfDue>> | null = null;
     if (status === "paid") {
       try {
         creditResult = await issueTradeinCreditIfDue(reference);
       } catch (err) {
         console.error("[admin] Trade-in credit issuance failed:", err);
         creditResult = { ok: false, reason: "credit issuance threw" };
+      }
+      try {
+        cashResult = await payTradeinCashIfDue(reference);
+      } catch (err) {
+        console.error("[admin] Trade-in cash payout failed:", err);
+        cashResult = { ok: false, reason: "cash payout threw" };
       }
     }
 
@@ -64,7 +72,7 @@ export async function PATCH(request: Request) {
       }).catch((err) => console.error("[admin] status email failed:", err));
     }
 
-    return NextResponse.json({ submission: updated, credit: creditResult });
+    return NextResponse.json({ submission: updated, credit: creditResult, cash: cashResult });
   } catch (err) {
     console.error("[admin] Failed to update submission:", err);
     return NextResponse.json({ error: "Database error." }, { status: 500 });

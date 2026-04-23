@@ -256,6 +256,85 @@ export async function getSubmissionByRef(
   return { submission, items: itemsResult.rows as ItemRow[] };
 }
 
+// ── Cash payout via Stripe Connect ──
+//
+// Sibling of issueTradeinCreditIfDue. When admin marks 'paid' and the
+// submission has a non-zero cash component, attempt a Stripe Transfer to
+// the seller's connected account. If they haven't onboarded Connect (or
+// payouts aren't enabled), this returns gracefully — admin handles cash
+// out-of-band as before.
+//
+// Idempotent via the cash_paid_at column. Stripe idempotency key is
+// stable per reference so a retry returns the same transfer object.
+export async function payTradeinCashIfDue(reference: string): Promise<{
+  ok: boolean;
+  transferId?: string;
+  amount?: number;
+  reason?: string;
+}> {
+  const r = await query(
+    `SELECT s.reference, s.status, s.user_id, s.cash_paid_at, s.cash_amount,
+            s.quoted_cash_total, s.payment_method,
+            u.stripe_connect_account_id, u.stripe_connect_payouts_enabled
+       FROM tradein_submissions s
+       LEFT JOIN users u ON u.id = s.user_id
+      WHERE s.reference = $1`,
+    [reference]
+  );
+  if (r.rows.length === 0) return { ok: false, reason: "submission not found" };
+  const sub = r.rows[0];
+
+  if (sub.status !== "paid") {
+    return { ok: false, reason: `status is ${sub.status}, not paid` };
+  }
+  if (sub.cash_paid_at) {
+    return { ok: false, reason: "cash already paid" };
+  }
+  if (!sub.user_id) {
+    return { ok: false, reason: "submission not linked to a user" };
+  }
+
+  const cashAmount = parseFloat(sub.cash_amount ?? sub.quoted_cash_total ?? "0");
+  if (!(cashAmount > 0)) {
+    // Credit-only payout; mark stamp so we don't re-check
+    await query(
+      `UPDATE tradein_submissions SET cash_paid_at = NOW() WHERE reference = $1`,
+      [reference]
+    );
+    return { ok: true, reason: "credit-only payout, nothing to wire" };
+  }
+
+  if (!sub.stripe_connect_account_id || !sub.stripe_connect_payouts_enabled) {
+    // Connect not set up — admin will pay manually via the bank fields.
+    // Don't stamp cash_paid_at; leave it for the manual flow.
+    return { ok: false, reason: "user has not connected Stripe for payouts" };
+  }
+
+  // Defer to the existing Connect transfer helper
+  const { createTransferToSeller } = await import("@/lib/payouts/stripe-connect");
+  try {
+    const result = await createTransferToSeller({
+      sellerUserId: sub.user_id,
+      amountGbp: cashAmount,
+      description: `Trade-in payout ${reference}`,
+      idempotencyKey: `tradein-cash-${reference}`,
+      metadata: { reference, kind: "tradein_cash" },
+    });
+    await query(
+      `UPDATE tradein_submissions
+          SET cash_paid_at = NOW(),
+              stripe_transfer_id = $2,
+              updated_at = NOW()
+        WHERE reference = $1`,
+      [reference, result.transferId]
+    );
+    return { ok: true, transferId: result.transferId, amount: cashAmount };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "transfer failed";
+    return { ok: false, reason: msg };
+  }
+}
+
 // ── Quote expiry sweep ──
 //
 // Cron entry point. Transitions submissions whose quote_expires_at has
