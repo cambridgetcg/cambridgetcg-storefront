@@ -27,6 +27,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
+  // Stripe Connect: keep the local account state in sync with Stripe's view.
+  // Fires when a seller completes onboarding, has a requirement come due,
+  // or gets restricted/disabled.
+  if (event.type === "account.updated") {
+    try {
+      const account = event.data.object as Stripe.Account;
+      const { syncAccountFromStripe } = await import("@/lib/payouts/stripe-connect");
+      await syncAccountFromStripe(account.id);
+      console.log(`[webhook] Connect account ${account.id} synced (charges=${account.charges_enabled} payouts=${account.payouts_enabled})`);
+    } catch (err) {
+      console.error("[webhook] account.updated sync failed:", err);
+    }
+    return NextResponse.json({ received: true });
+  }
+
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
 

@@ -783,13 +783,13 @@ async function sweepUnpaidEndedAuctions(): Promise<void> {
 
 // ── Manual payout recording (provider-agnostic) ──
 // Mirrors market.recordTradePayout. Auctions only have payout for seller-
-// listed (consigned) auctions where seller_user_id is set. We refuse on
-// store-owned auctions (no seller to pay) and on unpaid auctions.
+// listed (consigned) auctions where seller_user_id is set. For
+// method='stripe_connect' the transfer is executed here.
 export async function recordAuctionPayout(data: {
   auctionId: string;
   method: string;
   reference?: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<{ ok: true; transferId?: string } | { ok: false; error: string }> {
   const r = await query(
     `SELECT a.status, a.seller_paid_at, a.seller_payout, a.seller_user_id, a.title,
             u.email AS seller_email
@@ -810,14 +810,34 @@ export async function recordAuctionPayout(data: {
     return { ok: false, error: "No seller_payout calculated yet — run calculate_payout first." };
   }
 
+  let transferId: string | undefined;
+  let storedReference = data.reference || null;
+  if (data.method === "stripe_connect") {
+    try {
+      const { createTransferToSeller } = await import("@/lib/payouts/stripe-connect");
+      const result = await createTransferToSeller({
+        sellerUserId: a.seller_user_id,
+        amountGbp: parseFloat(a.seller_payout),
+        description: `Payout for auction ${data.auctionId} (${a.title})`,
+        metadata: { auctionId: data.auctionId, kind: "auction" },
+      });
+      transferId = result.transferId;
+      storedReference = transferId;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Stripe transfer failed";
+      return { ok: false, error: msg };
+    }
+  }
+
   await query(
     `UPDATE auctions
         SET seller_paid_at = NOW(),
             payout_method = $2,
             payout_reference = $3,
+            stripe_transfer_id = $4,
             updated_at = NOW()
       WHERE id = $1`,
-    [data.auctionId, data.method, data.reference || null]
+    [data.auctionId, data.method, storedReference, transferId || null]
   );
 
   // Notify the seller (best-effort). Reuses the auction email helper layout.
@@ -828,11 +848,11 @@ export async function recordAuctionPayout(data: {
       cardName: a.title,
       subject: `Payout sent: ${a.title} (£${a.seller_payout})`,
       heading: "Payout sent",
-      body: `Your payout of <strong>£${a.seller_payout}</strong> for <strong>${a.title}</strong> has been sent via ${data.method}${data.reference ? ` (ref <code>${data.reference}</code>)` : ""}.`,
+      body: `Your payout of <strong>£${a.seller_payout}</strong> for <strong>${a.title}</strong> has been sent via ${data.method}${storedReference ? ` (ref <code>${storedReference}</code>)` : ""}.`,
     }).catch((err) => console.error("[auction] Payout email failed:", err));
   }
 
-  return { ok: true };
+  return { ok: true, transferId };
 }
 
 // ── Cron entry point ──

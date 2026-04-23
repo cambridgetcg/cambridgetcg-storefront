@@ -727,10 +727,10 @@ export async function deleteTradePhoto(photoId: string): Promise<string | null> 
 }
 
 // ── Manual payout recording (provider-agnostic) ──
-// Admin-only path. Records that the seller has been paid off-platform (or
-// via any provider). Does not initiate any money movement — that happens in
-// the admin's own banking/PayPal/Stripe Connect/Mangopay UI. The trade row
-// remains the source of truth for "did this seller get paid yet?".
+// Admin-only path. Records that the seller has been paid. For most methods
+// this is just a bookkeeping stamp — admin moved money in their own
+// dashboard. For method='stripe_connect' we actually call stripe.transfers
+// to send the funds, then stamp the row with the transfer id.
 //
 // Refuses to record a payout twice. Refuses to record before the trade is
 // completed (so admin doesn't accidentally pay before fulfillment).
@@ -738,9 +738,9 @@ export async function recordTradePayout(data: {
   tradeId: string;
   method: string;        // bank_transfer | paypal | crypto | stripe_connect | mangopay | other
   reference?: string;    // provider txn id, bank ref, etc. Free-form.
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<{ ok: true; transferId?: string } | { ok: false; error: string }> {
   const tradeRes = await query(
-    `SELECT t.escrow_status, t.seller_paid_at, t.seller_payout,
+    `SELECT t.escrow_status, t.seller_paid_at, t.seller_payout, t.seller_id,
             su.email AS seller_email,
             COALESCE(o.card_name, t.sku) AS card_name
        FROM market_trades t
@@ -759,14 +759,37 @@ export async function recordTradePayout(data: {
     return { ok: false, error: `Cannot pay seller until trade is completed (currently ${trade.escrow_status}).` };
   }
 
+  // For Stripe Connect we make the actual transfer here. If it fails the row
+  // stays unstamped and admin can retry. The reference is the transfer id;
+  // any admin-supplied reference is appended into the metadata description.
+  let transferId: string | undefined;
+  let storedReference = data.reference || null;
+  if (data.method === "stripe_connect") {
+    try {
+      const { createTransferToSeller } = await import("@/lib/payouts/stripe-connect");
+      const result = await createTransferToSeller({
+        sellerUserId: trade.seller_id,
+        amountGbp: parseFloat(trade.seller_payout),
+        description: `Payout for trade ${data.tradeId} (${trade.card_name})`,
+        metadata: { tradeId: data.tradeId, kind: "market_trade" },
+      });
+      transferId = result.transferId;
+      storedReference = transferId;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Stripe transfer failed";
+      return { ok: false, error: msg };
+    }
+  }
+
   await query(
     `UPDATE market_trades
         SET seller_paid_at = NOW(),
             payout_method = $2,
             payout_reference = $3,
+            stripe_transfer_id = $4,
             updated_at = NOW()
       WHERE id = $1`,
-    [data.tradeId, data.method, data.reference || null]
+    [data.tradeId, data.method, storedReference, transferId || null]
   );
 
   // Receipt to the seller (fire-and-forget)
@@ -777,10 +800,10 @@ export async function recordTradePayout(data: {
     cardName: trade.card_name,
     amount: formatPrice(parseFloat(trade.seller_payout)),
     method: data.method,
-    reference: data.reference,
+    reference: storedReference,
   }).catch((err) => console.error("[market] Payout email failed:", err));
 
-  return { ok: true };
+  return { ok: true, transferId };
 }
 
 // ── Cron entry point ──
