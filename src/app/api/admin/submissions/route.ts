@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin/auth";
-import { getAllSubmissions, updateSubmissionStatus } from "@/lib/tradein/db";
+import {
+  getAllSubmissions,
+  updateSubmissionStatus,
+  issueTradeinCreditIfDue,
+} from "@/lib/tradein/db";
 
 export async function GET() {
   if (!(await isAdmin())) {
@@ -34,7 +38,21 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Submission not found." }, { status: 404 });
     }
 
-    return NextResponse.json({ submission: updated });
+    // On transition to 'paid', issue store credit if the submission has a
+    // credit component + linked user. Idempotent (credit_issued_at column
+    // gates re-runs); admin can flip status back and forth without
+    // double-crediting.
+    let creditResult: Awaited<ReturnType<typeof issueTradeinCreditIfDue>> | null = null;
+    if (status === "paid") {
+      try {
+        creditResult = await issueTradeinCreditIfDue(reference);
+      } catch (err) {
+        console.error("[admin] Trade-in credit issuance failed:", err);
+        creditResult = { ok: false, reason: "credit issuance threw" };
+      }
+    }
+
+    return NextResponse.json({ submission: updated, credit: creditResult });
   } catch (err) {
     console.error("[admin] Failed to update submission:", err);
     return NextResponse.json({ error: "Database error." }, { status: 500 });

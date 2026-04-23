@@ -100,6 +100,10 @@ export async function createSubmission(data: {
   cashTotal: number;
   creditTotal: number;
   expiresAt: Date;
+  // Caller can pass an authenticated user's id; we also fall back to a
+  // lookup by email so anonymous submitters who happen to be registered
+  // still get linked. Pure additive — null is fine.
+  userId?: string;
   items: {
     sku: string;
     card_number: string;
@@ -117,12 +121,23 @@ export async function createSubmission(data: {
   try {
     await client.query("BEGIN");
 
+    // If caller didn't pass userId, try to resolve from email so future
+    // credit issuance works without admin manually relinking.
+    let resolvedUserId = data.userId ?? null;
+    if (!resolvedUserId && data.customerEmail) {
+      const u = await client.query(
+        `SELECT id FROM users WHERE lower(email) = lower($1) LIMIT 1`,
+        [data.customerEmail]
+      );
+      resolvedUserId = u.rows[0]?.id ?? null;
+    }
+
     const subResult = await client.query(
       `INSERT INTO tradein_submissions
         (reference, customer_name, customer_email, customer_phone, payment_method,
          bank_sort_code, bank_account_number, delivery_method, is_over_18, notes,
-         quoted_cash_total, quoted_credit_total, quote_expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         quoted_cash_total, quoted_credit_total, quote_expires_at, user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING *`,
       [
         data.reference,
@@ -138,6 +153,7 @@ export async function createSubmission(data: {
         data.cashTotal.toFixed(2),
         data.creditTotal.toFixed(2),
         data.expiresAt.toISOString(),
+        resolvedUserId,
       ]
     );
 
@@ -238,4 +254,126 @@ export async function getSubmissionByRef(
   );
 
   return { submission, items: itemsResult.rows as ItemRow[] };
+}
+
+// ── Credit issuance on paid trade-ins ──
+//
+// Called whenever a submission transitions to status='paid'. Idempotent
+// (the credit_issued_at column gates re-runs); safe under retries.
+//
+// Issues credit when:
+//   - Submission has a linked user_id (registered customer)
+//   - payout_type is 'credit' or 'mixed' (non-zero credit_amount)
+//   - credit_issued_at is null (never issued before)
+//
+// Applies the user's membership tier tradein_bonus_percent on top of the
+// quoted credit_amount. Bonus is admin-visible via final_total but never
+// retroactively lost — once issued, the credit row is final.
+//
+// Uses a transaction: claim the credit_issued_at slot first (ON CONFLICT-
+// style by checking it's null), then bump balance + write ledger row,
+// then commit. If the transaction fails the credit_issued_at stays null
+// and the next status update re-attempts.
+export async function issueTradeinCreditIfDue(reference: string): Promise<{
+  ok: boolean;
+  issued?: { amount: number; bonus: number; userId: string };
+  reason?: string;
+}> {
+  const { default: pg } = await import("pg");
+  const pool = new pg.Pool(getConnectionConfig());
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Re-read with a row lock so concurrent admin clicks don't double-credit
+    const subRes = await client.query(
+      `SELECT s.*, u.tier_id
+         FROM tradein_submissions s
+         LEFT JOIN users u ON u.id = s.user_id
+        WHERE s.reference = $1
+        FOR UPDATE OF s`,
+      [reference]
+    );
+    if (subRes.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return { ok: false, reason: "Submission not found" };
+    }
+    const sub = subRes.rows[0];
+
+    if (sub.status !== "paid") {
+      await client.query("ROLLBACK");
+      return { ok: false, reason: `status is ${sub.status}, not paid` };
+    }
+    if (!sub.user_id) {
+      // Anonymous trade-in (no linked user). Admin pays them another way.
+      await client.query("ROLLBACK");
+      return { ok: false, reason: "submission not linked to a registered user" };
+    }
+    if (sub.credit_issued_at) {
+      await client.query("ROLLBACK");
+      return { ok: false, reason: "credit already issued" };
+    }
+
+    const baseCredit = parseFloat(sub.credit_amount ?? sub.quoted_credit_total ?? "0");
+    if (!(baseCredit > 0)) {
+      // Cash-only trade-in; mark issued so we don't keep checking
+      await client.query(
+        `UPDATE tradein_submissions SET credit_issued_at = NOW() WHERE reference = $1`,
+        [reference]
+      );
+      await client.query("COMMIT");
+      return { ok: true, reason: "cash-only payout, nothing to credit" };
+    }
+
+    // Apply membership tier tradein_bonus_percent (column on tiers table)
+    let bonusPct = 0;
+    if (sub.tier_id) {
+      const tierRes = await client.query(
+        `SELECT tradein_bonus_percent::numeric AS pct FROM tiers WHERE id = $1`,
+        [sub.tier_id]
+      );
+      bonusPct = parseFloat(tierRes.rows[0]?.pct ?? "0") || 0;
+    }
+    const bonusAmount = Math.round(baseCredit * (bonusPct / 100) * 100) / 100;
+    const totalCredit = baseCredit + bonusAmount;
+
+    // Bump balance + ledger row, then mark issued
+    const balRes = await client.query(
+      `UPDATE users SET store_credit_balance = store_credit_balance + $2
+        WHERE id = $1 RETURNING store_credit_balance::numeric AS balance`,
+      [sub.user_id, totalCredit.toFixed(2)]
+    );
+    const newBalance = balRes.rows[0]?.balance ?? "0";
+
+    const ledgerDescription = bonusAmount > 0
+      ? `Trade-in ${reference} (£${baseCredit.toFixed(2)} + £${bonusAmount.toFixed(2)} tier bonus)`
+      : `Trade-in ${reference}`;
+    await client.query(
+      `INSERT INTO store_credit_ledger (user_id, amount, balance, type, description, reference_id)
+       VALUES ($1, $2, $3, 'tradein_paid', $4, $5)`,
+      [sub.user_id, totalCredit.toFixed(2), newBalance, ledgerDescription, reference]
+    );
+
+    await client.query(
+      `UPDATE tradein_submissions
+          SET credit_issued_at = NOW(),
+              mint_bonus_amount = COALESCE(mint_bonus_amount, '0')::numeric + $2,
+              updated_at = NOW()
+        WHERE reference = $1`,
+      [reference, bonusAmount.toFixed(2)]
+    );
+
+    await client.query("COMMIT");
+    return {
+      ok: true,
+      issued: { amount: totalCredit, bonus: bonusAmount, userId: sub.user_id },
+    };
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+    await pool.end();
+  }
 }

@@ -108,11 +108,16 @@ export async function POST(request: Request) {
   }
   const reference = prefix + String(seq).padStart(4, "0");
 
-  // Create submission (status: submitted — credit NOT issued yet)
+  // Create submission (status: submitted — credit NOT issued yet).
+  // Link to the authenticated user so admin's later "paid" transition can
+  // automatically credit the right account.
   await query(
-    `INSERT INTO tradein_submissions (reference, status, customer_name, customer_email, payment_method, delivery_method, is_over_18, quoted_cash_total, quoted_credit_total)
-     VALUES ($1, 'submitted', $2, $3, 'credit', 'mail', true, '0', $4)`,
-    [reference, session.user.name || "Customer", session.user.email, totalCredit.toFixed(2)]
+    `INSERT INTO tradein_submissions
+       (reference, status, customer_name, customer_email, payment_method,
+        delivery_method, is_over_18, quoted_cash_total, quoted_credit_total, user_id)
+     VALUES ($1, 'submitted', $2, $3, 'credit', 'mail', true, '0', $4, $5)`,
+    [reference, session.user.name || "Customer", session.user.email,
+     totalCredit.toFixed(2), session.user.id]
   );
 
   const subResult = await query(`SELECT id FROM tradein_submissions WHERE reference=$1`, [reference]);
