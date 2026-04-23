@@ -312,13 +312,15 @@ export async function runBountyExpiry(): Promise<{
   expiredCount: number;
   creditTotalGbp: number;
   errors: number;
+  emailsFailed: number;
 }> {
-  // Lazy import to avoid a cycle (addCredit lives in membership/db and
-  // this module is imported from lots of places).
+  // Lazy imports to avoid a cycle (addCredit + email both transitively
+  // touch modules that import from here).
   const { addCredit } = await import("@/lib/membership/db");
+  const { sendVaultExpiredEmail } = await import("@/lib/email/bounty");
 
   const stale = await query(
-    `SELECT id, user_id, card_name, sku, spot_price_gbp
+    `SELECT id, user_id, card_name, card_number, rarity, sku, spot_price_gbp
      FROM vault_items
      WHERE status = 'reserved' AND expires_at <= NOW()
      ORDER BY expires_at ASC
@@ -328,9 +330,11 @@ export async function runBountyExpiry(): Promise<{
   let expiredCount = 0;
   let creditTotalGbp = 0;
   let errors = 0;
+  let emailsFailed = 0;
 
   for (const row of stale.rows) {
-    const credit = Number((parseFloat(row.spot_price_gbp) * SELL_BACK_RATE).toFixed(2));
+    const spotGbp = parseFloat(row.spot_price_gbp);
+    const credit = Number((spotGbp * SELL_BACK_RATE).toFixed(2));
     try {
       // Flip status under a WHERE guard so a concurrent manual sell-back or
       // redemption cannot double-process this item.
@@ -356,6 +360,22 @@ export async function runBountyExpiry(): Promise<{
         );
       }
 
+      // Notification email — fire-and-forget. If it fails we count it
+      // but the expiry itself remains successful.
+      const emailResult = await sendVaultExpiredEmail({
+        userId: row.user_id,
+        cardName: row.card_name,
+        sku: row.sku,
+        cardNumber: row.card_number,
+        rarity: row.rarity,
+        spotPriceGbp: spotGbp,
+        soldBackCreditGbp: credit,
+      });
+      if (!emailResult.ok) {
+        emailsFailed++;
+        console.warn(`[bounty-expiry] email failed for vault_item ${row.id}: ${emailResult.error}`);
+      }
+
       expiredCount++;
       creditTotalGbp += credit;
     } catch (err) {
@@ -364,5 +384,5 @@ export async function runBountyExpiry(): Promise<{
     }
   }
 
-  return { expiredCount, creditTotalGbp, errors };
+  return { expiredCount, creditTotalGbp, errors, emailsFailed };
 }
