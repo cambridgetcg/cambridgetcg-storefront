@@ -471,6 +471,15 @@ export default function CardMarketPage() {
     sku: string; cardName: string | null; imageUrl: string | null;
     bestAsk: number | null; coWatchCount: number;
   }>>([]);
+  const [fairValue, setFairValue] = useState<{
+    vwap: number | null; median: number | null;
+    tradeCount: number; totalVolume: number;
+    priceRange: { min: number | null; max: number | null };
+  } | null>(null);
+  const [bidAnalysis, setBidAnalysis] = useState<{
+    fillProbabilityPct: number | null;
+    expectedDaysToFill: number | null;
+  } | null>(null);
 
   // Price alert form
   const [alertOpen, setAlertOpen] = useState(false);
@@ -522,6 +531,30 @@ export default function CardMarketPage() {
       .then((d) => { if (d) setRelated(d.related || []); })
       .catch(() => {});
   }, [sku]);
+
+  // Fair value (fresh per SKU). Bid analysis re-fetches when the price
+  // input changes; debounced so typing doesn't hammer the endpoint.
+  useEffect(() => {
+    fetch(`/api/market/${sku}/fair-value`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setFairValue(d.fairValue); })
+      .catch(() => {});
+  }, [sku]);
+
+  useEffect(() => {
+    const parsed = parseFloat(price);
+    if (!parsed || parsed <= 0 || tab !== "buy") {
+      setBidAnalysis(null);
+      return;
+    }
+    const handle = setTimeout(() => {
+      fetch(`/api/market/${sku}/fair-value?bidPrice=${parsed}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => { if (d?.bidAnalysis) setBidAnalysis(d.bidAnalysis); })
+        .catch(() => {});
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [sku, price, tab]);
 
   // Watchlist state — derived from listing the user's full watchlist once
   // (cheaper than a per-sku check endpoint).
@@ -792,6 +825,34 @@ export default function CardMarketPage() {
             <div className="mt-4">
               <SpotPricePanel view={book} />
               {analytics && <PriceHistoryTile analytics={analytics} />}
+              {fairValue && fairValue.tradeCount > 0 && (
+                <div className="bg-neutral-900/60 border border-neutral-800 rounded-lg p-3 mb-4 space-y-1.5">
+                  <p className="text-[10px] text-neutral-500 uppercase tracking-wide">Fair value (30d)</p>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-neutral-400">VWAP</span>
+                    <span className="font-mono text-white">
+                      {fairValue.vwap !== null ? formatPrice(fairValue.vwap) : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-neutral-400">Median</span>
+                    <span className="font-mono text-neutral-300">
+                      {fairValue.median !== null ? formatPrice(fairValue.median) : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-neutral-500">Range</span>
+                    <span className="font-mono text-neutral-500">
+                      {fairValue.priceRange.min !== null && fairValue.priceRange.max !== null
+                        ? `${formatPrice(fairValue.priceRange.min)}–${formatPrice(fairValue.priceRange.max)}`
+                        : "—"}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-neutral-600 pt-1">
+                    Based on {fairValue.tradeCount} trade{fairValue.tradeCount !== 1 ? "s" : ""} &middot; {fairValue.totalVolume} unit{fairValue.totalVolume !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1045,6 +1106,29 @@ export default function CardMarketPage() {
                 {price && quantity && (
                   <div className="text-xs text-neutral-400 text-right">
                     Total: {formatPrice(parseFloat(price) * parseInt(quantity, 10) || 0)}
+                  </div>
+                )}
+
+                {/* Fill probability — only meaningful for bids */}
+                {tab === "buy" && bidAnalysis && bidAnalysis.fillProbabilityPct !== null && (
+                  <div className={`text-xs rounded-lg px-3 py-2 border ${
+                    bidAnalysis.fillProbabilityPct >= 50 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-300"
+                    : bidAnalysis.fillProbabilityPct >= 20 ? "bg-amber-500/10 border-amber-500/20 text-amber-300"
+                    : "bg-neutral-800 border-neutral-700 text-neutral-400"
+                  }`}>
+                    <div className="flex items-center justify-between">
+                      <span>Historical fill odds</span>
+                      <span className="font-mono font-bold">{bidAnalysis.fillProbabilityPct}%</span>
+                    </div>
+                    {bidAnalysis.expectedDaysToFill !== null && (
+                      <div className="flex items-center justify-between mt-0.5 text-[10px] opacity-80">
+                        <span>Expected time to fill</span>
+                        <span className="font-mono">~{bidAnalysis.expectedDaysToFill}d</span>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-neutral-500 mt-1">
+                      % of last 30d trades at or below this price.
+                    </p>
                   </div>
                 )}
 
