@@ -7,6 +7,7 @@ import Image from "next/image";
 import { formatPrice } from "@/lib/format";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import type { ValuatedCard, PortfolioSummary, PortfolioSnapshot, ListingAction } from "@/lib/portfolio/types";
+import PortfolioAnalytics from "@/components/portfolio/PortfolioAnalytics";
 
 type SortKey = "value" | "pnl" | "recent";
 
@@ -169,6 +170,13 @@ export default function PortfolioPage() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Analytics breakdown — sets / rarity / condition / concentration */}
+      {cards.length > 0 && summary && (
+        <div className="mb-6">
+          <PortfolioAnalytics cards={cards} summary={summary} />
         </div>
       )}
 
