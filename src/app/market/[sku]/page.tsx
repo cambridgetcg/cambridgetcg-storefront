@@ -464,6 +464,17 @@ export default function CardMarketPage() {
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
   const [verified, setVerified] = useState<boolean | null>(null);
 
+  // Watchlist
+  const [watching, setWatching] = useState<boolean | null>(null);
+  const [watchToggling, setWatchToggling] = useState(false);
+
+  // Price alert form
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [alertPrice, setAlertPrice] = useState("");
+  const [alertDirection, setAlertDirection] = useState<"below" | "above">("below");
+  const [alertSubmitting, setAlertSubmitting] = useState(false);
+  const [alertResult, setAlertResult] = useState<{ ok: boolean; message: string } | null>(null);
+
   // Sell-for-credit state
   const [creditQty, setCreditQty] = useState(1);
   const [creditAdded, setCreditAdded] = useState(false);
@@ -499,6 +510,60 @@ export default function CardMarketPage() {
       .then((d) => { if (d) setAnalytics({ sparkline: d.sparkline, lastPrice: d.lastPrice, change24hPct: d.change24hPct }); })
       .catch(() => {});
   }, [sku]);
+
+  // Watchlist state — derived from listing the user's full watchlist once
+  // (cheaper than a per-sku check endpoint).
+  useEffect(() => {
+    fetch("/api/market/watches")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d) { setWatching(false); return; }
+        setWatching((d.watches || []).some((w: { sku: string }) => w.sku === sku));
+      })
+      .catch(() => setWatching(false));
+  }, [sku]);
+
+  async function toggleWatch() {
+    if (watching === null) return;
+    setWatchToggling(true);
+    try {
+      const method = watching ? "DELETE" : "POST";
+      const res = await fetch("/api/market/watches", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sku }),
+      });
+      if (res.ok) setWatching(!watching);
+    } finally {
+      setWatchToggling(false);
+    }
+  }
+
+  async function submitAlert(e: React.FormEvent) {
+    e.preventDefault();
+    setAlertSubmitting(true);
+    setAlertResult(null);
+    try {
+      const res = await fetch("/api/market/alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sku,
+          thresholdPrice: parseFloat(alertPrice),
+          direction: alertDirection,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAlertResult({ ok: false, message: data.error || "Failed" });
+        return;
+      }
+      setAlertResult({ ok: true, message: "Alert created" });
+      setAlertPrice("");
+    } finally {
+      setAlertSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/auth/session")
@@ -644,8 +709,72 @@ export default function CardMarketPage() {
                 <span className="text-neutral-600">No Image</span>
               </div>
             )}
-            <h1 className="text-lg font-bold text-white mt-4">{book.card_name || sku}</h1>
-            <p className="text-xs text-neutral-500 font-mono">{sku}</p>
+            <div className="flex items-start justify-between gap-2 mt-4">
+              <div className="min-w-0">
+                <h1 className="text-lg font-bold text-white">{book.card_name || sku}</h1>
+                <p className="text-xs text-neutral-500 font-mono">{sku}</p>
+              </div>
+              {loggedIn && watching !== null && (
+                <button
+                  onClick={toggleWatch}
+                  disabled={watchToggling}
+                  title={watching ? "Remove from watchlist" : "Add to watchlist"}
+                  className={`text-xl transition shrink-0 ${watching ? "text-amber-400" : "text-neutral-600 hover:text-amber-400"}`}
+                  aria-label={watching ? "Unwatch" : "Watch"}
+                >
+                  {watching ? "★" : "☆"}
+                </button>
+              )}
+            </div>
+            {loggedIn && (
+              <div className="mt-3">
+                <button
+                  onClick={() => setAlertOpen((o) => !o)}
+                  className="text-xs text-neutral-400 hover:text-amber-400 transition"
+                >
+                  {alertOpen ? "− Hide alert" : "+ Set price alert"}
+                </button>
+                {alertOpen && (
+                  <form onSubmit={submitAlert} className="mt-2 bg-neutral-900 border border-neutral-800 rounded-lg p-3 space-y-2">
+                    <div className="flex gap-2">
+                      <select
+                        value={alertDirection}
+                        onChange={(e) => setAlertDirection(e.target.value as "below" | "above")}
+                        className="px-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-white text-xs"
+                      >
+                        <option value="below">Notify when ask ≤</option>
+                        <option value="above">Notify when sold ≥</option>
+                      </select>
+                      <div className="relative flex-1">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-neutral-500 text-xs">£</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          value={alertPrice}
+                          onChange={(e) => setAlertPrice(e.target.value)}
+                          required
+                          placeholder="0.00"
+                          className="w-full pl-6 pr-2 py-1.5 bg-neutral-800 border border-neutral-700 rounded text-white text-xs"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={alertSubmitting}
+                      className="w-full px-3 py-1.5 bg-amber-500 text-black text-xs font-bold rounded hover:bg-amber-400 transition disabled:opacity-50"
+                    >
+                      {alertSubmitting ? "..." : "Create alert"}
+                    </button>
+                    {alertResult && (
+                      <p className={`text-xs ${alertResult.ok ? "text-emerald-400" : "text-red-400"}`}>
+                        {alertResult.message}
+                      </p>
+                    )}
+                  </form>
+                )}
+              </div>
+            )}
 
             {/* Spot price panel below card image */}
             <div className="mt-4">

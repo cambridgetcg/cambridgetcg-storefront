@@ -145,6 +145,26 @@ export async function sendPayoutEmail(d: {
   await send(d.email, subject, html, text);
 }
 
+// ── Price alert ──
+
+export async function sendPriceAlertEmail(d: {
+  email: string; cardName: string; sku: string;
+  currentPrice: string; threshold: string; direction: "below" | "above";
+}) {
+  const cardUrl = `${SITE}/market/${d.sku}`;
+  const verb = d.direction === "below" ? "dropped to" : "reached";
+  const subject = `Price alert: ${d.cardName} ${verb} ${d.currentPrice}`;
+  const text = `${d.cardName} is now ${d.currentPrice} (your alert was ${d.direction} ${d.threshold}). View: ${cardUrl}`;
+  const html = tpl(
+    "Price alert",
+    `<p><strong>${d.cardName}</strong> just ${verb} <strong style="color:#f59e0b;">${d.currentPrice}</strong>.</p>
+     <p>Your alert was set for <strong>${d.direction}</strong> <strong>${d.threshold}</strong>.</p>
+     <p style="color:#737373;font-size:12px;">Alerts have a 24-hour cooldown to prevent spam.</p>`,
+    "View Card", cardUrl
+  );
+  await send(d.email, subject, html, text);
+}
+
 // ── Cancel (timeout) ──
 
 export async function sendCancelEmail(d: {

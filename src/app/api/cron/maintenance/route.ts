@@ -3,6 +3,7 @@ import { runMarketMaintenance } from "@/lib/market/db";
 import { runAuctionMaintenance } from "@/lib/auction/db";
 import { runBountyExpiry } from "@/lib/bounty/db";
 import { runPayoutSweep } from "@/lib/payouts/sweep";
+import { runAlertSweep } from "@/lib/market/watches";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -28,9 +29,10 @@ export async function GET(request: Request) {
     runAuctionMaintenance(),
     runBountyExpiry(),
     runPayoutSweep(),
+    runAlertSweep(),
   ]);
 
-  const [market, auctions, bounty, payouts] = results;
+  const [market, auctions, bounty, payouts, alerts] = results;
 
   const status = {
     market: market.status,
@@ -42,6 +44,10 @@ export async function GET(request: Request) {
     payouts:
       payouts.status === "fulfilled"
         ? { status: "fulfilled", ...payouts.value }
+        : { status: "rejected" },
+    alerts:
+      alerts.status === "fulfilled"
+        ? { status: "fulfilled", ...alerts.value }
         : { status: "rejected" },
     durationMs: Date.now() - start,
   };
@@ -63,6 +69,13 @@ export async function GET(request: Request) {
     for (const f of [...payouts.value.tradeFailures, ...payouts.value.auctionFailures]) {
       console.error(`[cron] payout failure ${f.id}: ${f.error}`);
     }
+  }
+  if (alerts.status === "rejected") console.error("[cron] alert sweep failed:", alerts.reason);
+  else if (alerts.value.fired > 0 || alerts.value.failures > 0) {
+    console.log(
+      `[cron] alerts: ${alerts.value.fired} fired, ${alerts.value.failures} failed` +
+      (alerts.value.throttled ? " (throttled)" : "")
+    );
   }
 
   return NextResponse.json(status);
