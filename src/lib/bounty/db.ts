@@ -300,3 +300,69 @@ export async function linkPullToVaultItem(pullId: string, vaultItemId: string): 
     [pullId, vaultItemId],
   );
 }
+
+// ── Expiry ──
+
+// Auto-expire reserved vault items past expires_at. Each expired item is
+// converted to store credit at SELL_BACK_RATE (user still gets value, just
+// doesn't get the physical card). Intended to be called from the maintenance
+// cron; safe to run frequently since the query is indexed and usually
+// returns 0 rows.
+export async function runBountyExpiry(): Promise<{
+  expiredCount: number;
+  creditTotalGbp: number;
+  errors: number;
+}> {
+  // Lazy import to avoid a cycle (addCredit lives in membership/db and
+  // this module is imported from lots of places).
+  const { addCredit } = await import("@/lib/membership/db");
+
+  const stale = await query(
+    `SELECT id, user_id, card_name, sku, spot_price_gbp
+     FROM vault_items
+     WHERE status = 'reserved' AND expires_at <= NOW()
+     ORDER BY expires_at ASC
+     LIMIT 500`,
+  );
+
+  let expiredCount = 0;
+  let creditTotalGbp = 0;
+  let errors = 0;
+
+  for (const row of stale.rows) {
+    const credit = Number((parseFloat(row.spot_price_gbp) * SELL_BACK_RATE).toFixed(2));
+    try {
+      // Flip status under a WHERE guard so a concurrent manual sell-back or
+      // redemption cannot double-process this item.
+      const updated = await query(
+        `UPDATE vault_items
+         SET status='expired',
+             sold_back_credit=$2,
+             sold_back_at=NOW(),
+             notes = COALESCE(notes || E'\n', '') || '[auto-expired]'
+         WHERE id=$1 AND status='reserved'
+         RETURNING id`,
+        [row.id, credit.toFixed(2)],
+      );
+      if (updated.rowCount === 0) continue;
+
+      if (credit > 0) {
+        await addCredit(
+          row.user_id,
+          credit,
+          "bounty_expiry",
+          `Vault item auto-expired: ${row.card_name} (${row.sku})`,
+          row.id,
+        );
+      }
+
+      expiredCount++;
+      creditTotalGbp += credit;
+    } catch (err) {
+      errors++;
+      console.error(`[bounty-expiry] failed for vault_item ${row.id}:`, err);
+    }
+  }
+
+  return { expiredCount, creditTotalGbp, errors };
+}

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { runMarketMaintenance } from "@/lib/market/db";
 import { runAuctionMaintenance } from "@/lib/auction/db";
+import { runBountyExpiry } from "@/lib/bounty/db";
 
-// Vercel cron hits this route on the schedule defined in vercel.ts. We accept
-// the request only when CRON_SECRET is set and the Bearer token matches —
-// Vercel injects this header automatically for project crons.
+// Vercel cron hits this route on the schedule defined in vercel.json. We
+// accept the request only when CRON_SECRET is set and the Bearer token
+// matches — Vercel injects this header automatically for project crons.
 //
 // If CRON_SECRET is not configured (e.g. in local dev) we still allow the
 // route to run so it can be exercised manually; production deployments must
@@ -19,21 +20,32 @@ export async function GET(request: Request) {
   }
 
   const start = Date.now();
-  // Run both pipelines independently — a failure in one shouldn't block the
-  // other. We return per-pipeline status so the cron log is debuggable.
+  // Run pipelines independently — a failure in one shouldn't block the
+  // others. Per-pipeline status is returned so the cron log is debuggable.
   const results = await Promise.allSettled([
     runMarketMaintenance(),
     runAuctionMaintenance(),
+    runBountyExpiry(),
   ]);
 
+  const [market, auctions, bounty] = results;
+
   const status = {
-    market: results[0].status,
-    auctions: results[1].status,
+    market: market.status,
+    auctions: auctions.status,
+    bounty:
+      bounty.status === "fulfilled"
+        ? { status: "fulfilled", ...bounty.value }
+        : { status: "rejected" },
     durationMs: Date.now() - start,
   };
 
-  if (results[0].status === "rejected") console.error("[cron] market maintenance failed:", results[0].reason);
-  if (results[1].status === "rejected") console.error("[cron] auction maintenance failed:", results[1].reason);
+  if (market.status === "rejected") console.error("[cron] market maintenance failed:", market.reason);
+  if (auctions.status === "rejected") console.error("[cron] auction maintenance failed:", auctions.reason);
+  if (bounty.status === "rejected") console.error("[cron] bounty expiry failed:", bounty.reason);
+  else if (bounty.value.expiredCount > 0) {
+    console.log(`[cron] bounty: expired ${bounty.value.expiredCount} items, awarded £${bounty.value.creditTotalGbp.toFixed(2)}`);
+  }
 
   return NextResponse.json(status);
 }
