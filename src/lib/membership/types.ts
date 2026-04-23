@@ -35,6 +35,10 @@ export interface PointsEntry {
   created_at: string;
 }
 
+// Berries alias — prefer this in new code. The legacy `PointsEntry` name will
+// remain until the DB column rename migration lands.
+export type BerriesEntry = PointsEntry;
+
 export interface CreditEntry {
   id: string;
   user_id: string;

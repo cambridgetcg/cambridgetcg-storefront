@@ -266,8 +266,8 @@ export default function TrustProfilePage() {
       setLinkUsername("");
       setLinkUrl("");
       setLinkScreenshot("");
-    } catch (err: any) {
-      setLinkError(err.message || "Failed to link account");
+    } catch (err) {
+      setLinkError(err instanceof Error ? err.message : "Failed to link account");
     } finally {
       setLinkSubmitting(false);
     }
@@ -407,7 +407,7 @@ export default function TrustProfilePage() {
           <div className="mb-2">
             <div className="flex justify-between text-xs text-neutral-500 mb-1">
               <span>{score} / {nextTier.minScore}</span>
-              <span>{nextTier.minScore - score} points needed</span>
+              <span>{nextTier.minScore - score} score needed</span>
             </div>
             <div className="h-3 bg-neutral-800 rounded-full overflow-hidden">
               <div

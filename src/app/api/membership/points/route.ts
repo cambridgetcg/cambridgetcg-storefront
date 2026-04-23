@@ -1,11 +1,3 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
-import { getPointsHistory } from "@/lib/membership/db";
-
-export async function GET() {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
-
-  const history = await getPointsHistory(session.user.id, 50);
-  return NextResponse.json({ history });
-}
+// Legacy URL — preserved as a re-export so existing callers don't break.
+// Prefer /api/membership/berries for new code.
+export { GET } from "../berries/route";

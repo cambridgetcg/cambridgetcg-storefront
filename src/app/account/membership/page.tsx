@@ -99,7 +99,7 @@ export default function MembershipPage() {
         Promise.all([
           fetch("/api/membership").then(r => r.json()),
           fetch("/api/membership?tiers=true").then(r => r.json()),
-          fetch("/api/membership/points").then(r => r.json()),
+          fetch("/api/membership/berries").then(r => r.json()),
           fetch("/api/membership/credit").then(r => r.json()),
         ]).then(([profileData, tiersData, pointsData, creditData]) => {
           setProfile(profileData.profile);

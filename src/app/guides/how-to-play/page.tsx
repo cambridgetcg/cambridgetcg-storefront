@@ -480,7 +480,8 @@ export default function HowToPlayPage() {
               <p className="text-sm text-neutral-400 mt-1">
                 Take cards from the top of your deck equal to your Leader&apos;s
                 Life value and place them face-down in your Life Area. These are
-                your hit points. Most Leaders have 4 or 5 Life.
+                your Life cards — when an attack gets through your Leader, you
+                reveal one and add it to your hand. Most Leaders have 4 or 5 Life.
               </p>
             </Step>
             <Step n={3}>

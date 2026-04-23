@@ -248,6 +248,14 @@ export async function getPointsHistory(userId: string, limit: number = 20): Prom
   return result.rows as PointsEntry[];
 }
 
+// ── Berries aliases ──
+// The DB columns and canonical function names stay on `points` until a proper
+// rename migration lands. New code should import these Berries-named aliases
+// so the codebase naturally migrates over time.
+export const earnBerries = earnPoints;
+export const spendBerries = spendPoints;
+export const getBerriesHistory = getPointsHistory;
+
 // ══════════════════════════════════════════════════════════════
 // STORE CREDIT
 // ══════════════════════════════════════════════════════════════
