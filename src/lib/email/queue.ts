@@ -81,6 +81,9 @@ async function loadHandlers(): Promise<void> {
   if (!HANDLERS["streak_at_risk"]) {
     await import("./handlers/streak-at-risk");
   }
+  if (!HANDLERS["portfolio_price_alert"]) {
+    await import("./handlers/portfolio-price-alert");
+  }
 }
 
 // ── Schedule ────────────────────────────────────────────────────────────

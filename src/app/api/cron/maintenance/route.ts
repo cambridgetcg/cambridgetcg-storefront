@@ -11,6 +11,7 @@ import { runSellerRestockDigest, runBuyerWatchlistDigest } from "@/lib/market/di
 import { runLiquidityMining } from "@/lib/market/liquidity";
 import { runTradeinSweep } from "@/lib/tradein/sweep";
 import { runPriceHistoryTick } from "@/lib/portfolio/price-history";
+import { runPriceAlertSweep } from "@/lib/portfolio/alerts";
 import { runAnnualSpendRecompute } from "@/lib/membership/spend-sweep";
 import { runSubscriptionExpirySweep } from "@/lib/membership/subscription-sweep";
 
@@ -67,13 +68,17 @@ export async function GET(request: Request) {
     runTradeinSweep(),
     // Portfolio price-history sampler
     runPriceTick ? runPriceHistoryTick() : Promise.resolve(null),
+    // Portfolio price-alert evaluator — runs right after the price tick so
+    // we evaluate against the freshest sample. Idempotent per alert+day
+    // via the queue's idempotency_key, so minute cadence is fine.
+    runPriceAlertSweep(),
     // Annual spend recompute — self-gates to 02:00 UTC daily
     runAnnualSpendRecompute(),
     // Subscription expiry catch-up sweep
     runSubscriptionExpirySweep(),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick, spendRecompute, subSweep] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick, priceAlertSweep, spendRecompute, subSweep] = results;
 
   const status = {
     market: market.status,
@@ -128,6 +133,10 @@ export async function GET(request: Request) {
         : priceTick.status === "rejected"
           ? { status: "rejected" }
           : { status: "skipped" },
+    priceAlertSweep:
+      priceAlertSweep.status === "fulfilled"
+        ? { status: "fulfilled", ...priceAlertSweep.value }
+        : { status: "rejected" },
     spendRecompute:
       spendRecompute.status === "fulfilled"
         ? (spendRecompute.value.ranInWindow
