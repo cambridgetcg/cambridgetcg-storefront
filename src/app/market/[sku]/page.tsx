@@ -10,18 +10,29 @@ import type { OrderBookEntry, MarketTrade } from "@/lib/market/types";
 import type { UnifiedMarketView } from "@/lib/market/unified";
 import type { EscrowTier } from "@/lib/escrow/service-tiers";
 
-const CONDITIONS = [
-  "Near Mint",
-  "Lightly Played",
-  "Moderately Played",
-  "Heavily Played",
-  "Damaged",
+// API expects ISO-style codes; UI shows human labels.
+// "Damaged" is intentionally absent from the API enum, so it's not offered here.
+const CONDITIONS: { code: "NM" | "LP" | "MP" | "HP"; label: string }[] = [
+  { code: "NM", label: "Near Mint" },
+  { code: "LP", label: "Lightly Played" },
+  { code: "MP", label: "Moderately Played" },
+  { code: "HP", label: "Heavily Played" },
 ];
 
 type UnifiedAsk = OrderBookEntry & { is_house?: boolean };
 type UnifiedBid = OrderBookEntry & { is_house?: boolean; is_credit?: boolean; label?: string };
 
-function OrderBookViz({ bids, asks }: { bids: UnifiedBid[]; asks: UnifiedAsk[] }) {
+function OrderBookViz({
+  bids,
+  asks,
+  onHouseAskClick,
+  onHouseBidClick,
+}: {
+  bids: UnifiedBid[];
+  asks: UnifiedAsk[];
+  onHouseAskClick?: () => void;
+  onHouseBidClick?: () => void;
+}) {
   const maxBidQty = Math.max(1, ...bids.map((b) => b.total_quantity));
   const maxAskQty = Math.max(1, ...asks.map((a) => a.total_quantity));
   const maxRows = Math.max(bids.length, asks.length, 1);
@@ -41,7 +52,16 @@ function OrderBookViz({ bids, asks }: { bids: UnifiedBid[]; asks: UnifiedAsk[] }
 
       {/* Rows */}
       {Array.from({ length: maxRows }).map((_, i) => (
-        <BidAskRow key={i} bid={bids[i]} ask={asks[i]} maxBidQty={maxBidQty} maxAskQty={maxAskQty} isFirst={i === 0} />
+        <BidAskRow
+          key={i}
+          bid={bids[i]}
+          ask={asks[i]}
+          maxBidQty={maxBidQty}
+          maxAskQty={maxAskQty}
+          isFirst={i === 0}
+          onHouseAskClick={onHouseAskClick}
+          onHouseBidClick={onHouseBidClick}
+        />
       ))}
     </div>
   );
@@ -53,12 +73,16 @@ function BidAskRow({
   maxBidQty,
   maxAskQty,
   isFirst,
+  onHouseAskClick,
+  onHouseBidClick,
 }: {
   bid?: UnifiedBid;
   ask?: UnifiedAsk;
   maxBidQty: number;
   maxAskQty: number;
   isFirst: boolean;
+  onHouseAskClick?: () => void;
+  onHouseBidClick?: () => void;
 }) {
   const isHouse = ask?.is_house;
   const askBgColor = isHouse ? "bg-amber-500/10" : "bg-red-500/20";
@@ -74,10 +98,22 @@ function BidAskRow({
     ? isBidHouse ? "border-r-2 border-purple-500/40" : "border-r-2 border-emerald-500/40"
     : "border-r border-neutral-800";
 
+  // House rows are clickable shortcuts to the matching real action.
+  // P2P rows are display-only — clicking them does not match orders, the form does.
+  const askClickable = isHouse && onHouseAskClick;
+  const bidClickable = isBidHouse && onHouseBidClick;
+
   return (
     <>
       {/* Bid cell */}
-      <div className={`relative h-8 flex items-center ${bidBorderColor}`}>
+      <div
+        className={`relative h-8 flex items-center ${bidBorderColor} ${bidClickable ? "cursor-pointer hover:brightness-125" : ""}`}
+        onClick={bidClickable ? onHouseBidClick : undefined}
+        role={bidClickable ? "button" : undefined}
+        tabIndex={bidClickable ? 0 : undefined}
+        onKeyDown={bidClickable ? (e) => { if (e.key === "Enter") onHouseBidClick?.(); } : undefined}
+        title={bidClickable ? "Sell to CTCG for store credit" : undefined}
+      >
         {bid ? (
           <>
             <div
@@ -99,7 +135,14 @@ function BidAskRow({
         )}
       </div>
       {/* Ask cell */}
-      <div className={`relative h-8 flex items-center ${askBorderColor}`}>
+      <div
+        className={`relative h-8 flex items-center ${askBorderColor} ${askClickable ? "cursor-pointer hover:brightness-125" : ""}`}
+        onClick={askClickable ? onHouseAskClick : undefined}
+        role={askClickable ? "button" : undefined}
+        tabIndex={askClickable ? 0 : undefined}
+        onKeyDown={askClickable ? (e) => { if (e.key === "Enter") onHouseAskClick?.(); } : undefined}
+        title={askClickable ? "Buy from CTCG (catalog)" : undefined}
+      >
         {ask ? (
           <>
             <div
@@ -341,10 +384,11 @@ export default function CardMarketPage() {
   const [tab, setTab] = useState<"buy" | "sell">("buy");
   const [price, setPrice] = useState("");
   const [quantity, setQuantity] = useState("1");
-  const [condition, setCondition] = useState("Near Mint");
+  const [condition, setCondition] = useState<"NM" | "LP" | "MP" | "HP">("NM");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
   const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
+  const [verified, setVerified] = useState<boolean | null>(null);
 
   // Sell-for-credit state
   const [creditQty, setCreditQty] = useState(1);
@@ -377,8 +421,21 @@ export default function CardMarketPage() {
   useEffect(() => {
     fetch("/api/auth/session")
       .then((r) => r.json())
-      .then((data) => setLoggedIn(!!data?.user?.email))
-      .catch(() => setLoggedIn(false));
+      .then((data) => {
+        const isLoggedIn = !!data?.user?.email;
+        setLoggedIn(isLoggedIn);
+        if (!isLoggedIn) {
+          setVerified(false);
+          return;
+        }
+        // Verification status feeds the form gate so users see the CTA
+        // before they fill in price/quantity, not on submit
+        return fetch("/api/trust/verify")
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => setVerified(d?.verification?.status === "verified"))
+          .catch(() => setVerified(false));
+      })
+      .catch(() => { setLoggedIn(false); setVerified(false); });
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -543,7 +600,12 @@ export default function CardMarketPage() {
                 No orders yet. Be the first to post!
               </div>
             ) : (
-              <OrderBookViz bids={book.bids} asks={book.asks} />
+              <OrderBookViz
+                bids={book.bids}
+                asks={book.asks}
+                onHouseAskClick={() => { window.location.href = `/product/${sku}`; }}
+                onHouseBidClick={handleAddToSellCart}
+              />
             )}
           </div>
 
@@ -612,7 +674,10 @@ export default function CardMarketPage() {
                         <div className="mt-3 space-y-2">
                           <div className="bg-purple-500/10 border border-purple-500/20 rounded-lg p-3">
                             <p className="text-sm font-semibold text-purple-400">
-                              Added to sell cart!
+                              Added to sell cart
+                            </p>
+                            <p className="text-[11px] text-neutral-400 mt-1">
+                              Submit your cart to lock in this offer. We&rsquo;ll confirm credit after inspection.
                             </p>
                           </div>
                           <button
@@ -634,15 +699,14 @@ export default function CardMarketPage() {
                     {/* Right: messaging */}
                     <div className="flex-1 space-y-1.5 pt-1">
                       <p className="text-sm text-neutral-300">Always available. Unlimited quantity.</p>
-                      <p className="text-sm text-neutral-300">No waiting for a buyer.</p>
-                      <p className="text-sm text-neutral-300">Credit added instantly.</p>
-                      <p className="text-sm text-neutral-300">Ship within 7 days.</p>
+                      <p className="text-sm text-neutral-300">Submit, ship within 7 days, we&rsquo;ll inspect &amp; confirm.</p>
+                      <p className="text-sm text-neutral-300">Credit issued after we receive &amp; verify your cards.</p>
                     </div>
                   </div>
 
                   <p className="text-[11px] text-neutral-500 mt-4 leading-relaxed">
-                    Store credit can only be used at Cambridge TCG.
-                    This is our standing bid &mdash; always available, unlimited quantity.
+                    Submission is reviewed before credit is issued; final amount may differ if condition does not match.
+                    Store credit can only be used at Cambridge TCG. This is our standing bid &mdash; always available, unlimited quantity.
                   </p>
                 </div>
               </div>
@@ -695,6 +759,20 @@ export default function CardMarketPage() {
                   Sign in to trade
                 </Link>
               </div>
+            ) : loggedIn && verified === false ? (
+              <div className="text-center py-6 px-2">
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-amber-500/15 text-amber-400 mb-3 text-lg">!</div>
+                <p className="text-white text-sm font-semibold mb-1">UK verification required</p>
+                <p className="text-neutral-400 text-xs mb-4 leading-relaxed">
+                  P2P trading requires UK address + age verification (one-time, ~2 minutes).
+                </p>
+                <Link
+                  href="/account/verify"
+                  className="inline-block px-4 py-2 bg-amber-500 text-black text-sm font-bold rounded-lg hover:bg-amber-400 transition"
+                >
+                  Verify Identity
+                </Link>
+              </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
@@ -730,11 +808,11 @@ export default function CardMarketPage() {
                   <label className="block text-xs text-neutral-500 mb-1">Condition</label>
                   <select
                     value={condition}
-                    onChange={(e) => setCondition(e.target.value)}
+                    onChange={(e) => setCondition(e.target.value as typeof condition)}
                     className="w-full px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm focus:outline-none focus:border-amber-500/50 transition"
                   >
                     {CONDITIONS.map((c) => (
-                      <option key={c} value={c}>{c}</option>
+                      <option key={c.code} value={c.code}>{c.label}</option>
                     ))}
                   </select>
                 </div>
