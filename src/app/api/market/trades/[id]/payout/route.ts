@@ -3,7 +3,7 @@ import { isAdmin } from "@/lib/admin/auth";
 import { recordTradePayout } from "@/lib/market/db";
 
 const VALID_METHODS = new Set([
-  "bank_transfer", "paypal", "crypto", "stripe_connect", "mangopay", "store_credit", "other",
+  "bank_transfer", "paypal", "crypto", "stripe_connect", "store_credit", "other",
 ]);
 
 // POST — admin records that a payout was sent off-platform.

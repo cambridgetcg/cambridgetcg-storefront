@@ -193,7 +193,7 @@ export default function AdminAuctionsPage() {
 
   async function handleRecordPayout(id: string) {
     const method = window.prompt(
-      "Payout method (bank_transfer / paypal / crypto / stripe_connect / mangopay / store_credit / other):",
+      "Payout method (bank_transfer / paypal / crypto / stripe_connect / store_credit / other):",
       "bank_transfer"
     );
     if (!method) return;

@@ -736,7 +736,7 @@ export async function deleteTradePhoto(photoId: string): Promise<string | null> 
 // completed (so admin doesn't accidentally pay before fulfillment).
 export async function recordTradePayout(data: {
   tradeId: string;
-  method: string;        // bank_transfer | paypal | crypto | stripe_connect | mangopay | other
+  method: string;        // bank_transfer | paypal | crypto | stripe_connect | store_credit | other
   reference?: string;    // provider txn id, bank ref, etc. Free-form.
 }): Promise<{ ok: true; transferId?: string } | { ok: false; error: string }> {
   const tradeRes = await query(
