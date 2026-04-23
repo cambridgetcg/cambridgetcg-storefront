@@ -236,14 +236,50 @@ export default function DeckBuilderPage() {
     fetchCards();
   }, [fetchCards]);
 
-  /* ---- Load saved decks from localStorage ---- */
+  /* ---- Load saved decks — prefer server for signed-in users ---- */
+  const [signedIn, setSignedIn] = useState(false);
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) setSavedDecks(JSON.parse(stored));
-    } catch {
-      /* ignore */
-    }
+    (async () => {
+      try {
+        const res = await fetch("/api/decks");
+        if (res.status === 401) {
+          // Anonymous — fall back to localStorage.
+          setSignedIn(false);
+          const stored = localStorage.getItem(STORAGE_KEY);
+          if (stored) setSavedDecks(JSON.parse(stored));
+          return;
+        }
+        if (res.ok) {
+          setSignedIn(true);
+          const data = await res.json();
+          // Map server decks to the existing SavedDeck shape the UI uses.
+          type ServerDeck = {
+            name: string;
+            leader_sku: string | null;
+            entries: { sku: string; quantity: number; card: CatalogCard }[];
+            updated_at: string;
+          };
+          const decks: SavedDeck[] = (data.decks ?? []).map((d: ServerDeck) => {
+            const leaderEntry = d.entries.find((e) => e.sku === d.leader_sku);
+            return {
+              name: d.name,
+              leader: leaderEntry?.card ?? null,
+              entries: d.entries.filter((e) => e.sku !== d.leader_sku),
+              savedAt: d.updated_at,
+            };
+          });
+          setSavedDecks(decks);
+          return;
+        }
+      } catch {
+        /* fall through to localStorage */
+      }
+      // Fallback
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) setSavedDecks(JSON.parse(stored));
+      } catch { /* ignore */ }
+    })();
   }, []);
 
   /* ---- Filtered cards (client-side rarity filter) ---- */
@@ -303,7 +339,7 @@ export default function DeckBuilderPage() {
   }
 
   /* ---- Save / Load ---- */
-  function saveDeck() {
+  async function saveDeck() {
     const deck: SavedDeck = {
       name: deckName,
       leader,
@@ -315,11 +351,44 @@ export default function DeckBuilderPage() {
       savedAt: new Date().toISOString(),
     };
 
+    // Signed-in users hit the server (cross-device sync). Anonymous users
+    // stick with localStorage. The local cache is kept in sync in both
+    // cases so reloading the page doesn't flash an empty list.
+    if (signedIn) {
+      // Build the server-side entry list (includes leader for snapshot).
+      const serverEntries = deckEntries.map((e) => ({
+        sku: e.card.sku,
+        quantity: e.quantity,
+        card: e.card,
+      }));
+      if (leader) {
+        serverEntries.unshift({ sku: leader.sku, quantity: 1, card: leader });
+      }
+      try {
+        const res = await fetch("/api/decks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: deckName,
+            leader_sku: leader?.sku ?? null,
+            entries: serverEntries,
+          }),
+        });
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          toast(d.error || "Save failed.", "error");
+          return;
+        }
+      } catch {
+        toast("Network error — saved locally only.", "warning");
+      }
+    }
+
     const updated = [...savedDecks.filter((d) => d.name !== deckName), deck];
     setSavedDecks(updated);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     setShowSaveModal(false);
-    toast(`Deck "${deckName}" saved`, "success");
+    toast(`Deck "${deckName}" saved${signedIn ? " (synced)" : ""}`, "success");
   }
 
   function loadDeck(deck: SavedDeck) {
@@ -332,7 +401,20 @@ export default function DeckBuilderPage() {
     toast(`Loaded "${deck.name}"`, "success");
   }
 
-  function deleteSavedDeck(name: string) {
+  async function deleteSavedDeck(name: string) {
+    if (signedIn) {
+      try {
+        // Server-side delete — look up by name via the list, then DELETE by id.
+        // (We don't have the id in client state yet, so fetch once.)
+        const list = await fetch("/api/decks").then((r) => (r.ok ? r.json() : null));
+        const target = list?.decks?.find((d: { name: string; id: string }) => d.name === name);
+        if (target?.id) {
+          await fetch(`/api/decks/${target.id}`, { method: "DELETE" });
+        }
+      } catch {
+        /* fall through to local removal */
+      }
+    }
     const updated = savedDecks.filter((d) => d.name !== name);
     setSavedDecks(updated);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
