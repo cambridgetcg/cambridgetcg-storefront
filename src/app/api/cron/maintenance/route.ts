@@ -6,6 +6,7 @@ import { runPayoutSweep } from "@/lib/payouts/sweep";
 import { runAlertSweep } from "@/lib/market/watches";
 import { drainEmailQueue } from "@/lib/email/queue";
 import { runStreakAtRiskSweep } from "@/lib/email/streak-sweep";
+import { runSellerRestockDigest, runBuyerWatchlistDigest } from "@/lib/market/digests";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -41,9 +42,12 @@ export async function GET(request: Request) {
     runAlertSweep(),
     drainEmailQueue({ limit: 100 }),
     runStreakSweep ? runStreakAtRiskSweep() : Promise.resolve(null),
+    // Weekly digests — self-gate to Monday 09:00 UTC + atomic digest_runs claim.
+    runSellerRestockDigest(),
+    runBuyerWatchlistDigest(),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails, streakSweep] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest] = results;
 
   const status = {
     market: market.status,
@@ -70,6 +74,14 @@ export async function GET(request: Request) {
         : streakSweep.status === "rejected"
           ? { status: "rejected" }
           : { status: "skipped" },
+    restockDigest:
+      restockDigest.status === "fulfilled"
+        ? (restockDigest.value.skipped ? { status: "skipped" } : { status: "fulfilled", sent: restockDigest.value.sent })
+        : { status: "rejected" },
+    watchlistDigest:
+      watchlistDigest.status === "fulfilled"
+        ? (watchlistDigest.value.skipped ? { status: "skipped" } : { status: "fulfilled", sent: watchlistDigest.value.sent })
+        : { status: "rejected" },
     durationMs: Date.now() - start,
   };
 
@@ -97,6 +109,14 @@ export async function GET(request: Request) {
       `[cron] alerts: ${alerts.value.fired} fired, ${alerts.value.failures} failed` +
       (alerts.value.throttled ? " (throttled)" : "")
     );
+  }
+  if (restockDigest.status === "rejected") console.error("[cron] restock digest failed:", restockDigest.reason);
+  else if (!restockDigest.value.skipped) {
+    console.log(`[cron] restock digest: sent ${restockDigest.value.sent}`);
+  }
+  if (watchlistDigest.status === "rejected") console.error("[cron] watchlist digest failed:", watchlistDigest.reason);
+  else if (!watchlistDigest.value.skipped) {
+    console.log(`[cron] watchlist digest: sent ${watchlistDigest.value.sent}`);
   }
   if (emails.status === "rejected") console.error("[cron] email drain failed:", emails.reason);
   else if (emails.value.picked > 0) {

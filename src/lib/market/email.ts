@@ -145,6 +145,68 @@ export async function sendPayoutEmail(d: {
   await send(d.email, subject, html, text);
 }
 
+// ── Weekly digests ──
+
+export async function sendSellerRestockDigest(d: {
+  email: string;
+  name: string | null;
+  opportunities: Array<{
+    cardName: string; sku: string; bestAsk: number | null;
+    watchCount: number; alertCount: number; opportunityScore: number;
+  }>;
+}) {
+  if (d.opportunities.length === 0) return;
+  const rows = d.opportunities.map((o) => {
+    const priceHint = o.bestAsk !== null ? `market ${new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(o.bestAsk)}` : "no current ask";
+    return `<tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #262626;"><strong style="color:#fff;">${o.cardName}</strong><br/><span style="color:#737373;font-size:11px;font-family:monospace;">${o.sku}</span></td>
+      <td style="padding:8px 12px;border-bottom:1px solid #262626;text-align:right;"><span style="color:#f59e0b;">${o.watchCount} watchers</span><br/><span style="color:#737373;font-size:11px;">${priceHint}</span></td>
+    </tr>`;
+  }).join("");
+  const subject = `${d.opportunities.length} restock opportunit${d.opportunities.length === 1 ? "y" : "ies"} — Cambridge TCG`;
+  const text = `We spotted ${d.opportunities.length} cards with strong buyer demand and thin supply. Top card: ${d.opportunities[0].cardName} (${d.opportunities[0].watchCount} watchers). Details: ${SITE}/account/demand`;
+  const html = tpl(
+    "Restock opportunities this week",
+    `<p>${d.name ? `Hi ${d.name}, ` : ""}here are the cards buyers are watching most that currently have thin supply.</p>
+     <table style="width:100%;border-collapse:collapse;margin:16px 0;">${rows}</table>
+     <p style="color:#737373;font-size:12px;">Ranked by buyer demand (watchers + active price alerts) against current ask depth.</p>`,
+    "See full demand list", `${SITE}/account/demand`
+  );
+  await send(d.email, subject, html, text);
+}
+
+export async function sendBuyerWatchlistDigest(d: {
+  email: string;
+  name: string | null;
+  moves: Array<{
+    cardName: string; sku: string;
+    before: number | null; after: number | null;
+    note: string; // "new ask", "price drop", "trade hit low", etc.
+  }>;
+}) {
+  if (d.moves.length === 0) return;
+  const fmt = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" });
+  const rows = d.moves.map((m) => {
+    const priceLine =
+      m.before !== null && m.after !== null
+        ? `${fmt.format(m.before)} &rarr; <strong>${fmt.format(m.after)}</strong>`
+        : m.after !== null ? `<strong>${fmt.format(m.after)}</strong>` : "—";
+    return `<tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #262626;"><strong style="color:#fff;">${m.cardName}</strong><br/><span style="color:#737373;font-size:11px;font-family:monospace;">${m.sku}</span></td>
+      <td style="padding:8px 12px;border-bottom:1px solid #262626;text-align:right;"><span style="color:#34d399;">${m.note}</span><br/><span style="color:#d4d4d4;font-size:12px;">${priceLine}</span></td>
+    </tr>`;
+  }).join("");
+  const subject = `Your watchlist moved: ${d.moves.length} update${d.moves.length === 1 ? "" : "s"}`;
+  const text = `${d.moves.length} of your watched cards moved this week. View: ${SITE}/account/watchlist`;
+  const html = tpl(
+    "Your watchlist this week",
+    `<p>${d.name ? `Hi ${d.name}, ` : ""}here&rsquo;s what happened on the cards you&rsquo;re watching.</p>
+     <table style="width:100%;border-collapse:collapse;margin:16px 0;">${rows}</table>`,
+    "Open watchlist", `${SITE}/account/watchlist`
+  );
+  await send(d.email, subject, html, text);
+}
+
 // ── Price alert ──
 
 export async function sendPriceAlertEmail(d: {
