@@ -131,13 +131,21 @@ export default function AdminBountyRedemptions() {
               Pick, pack, and ship vault-item orders. Add tracking on fulfill to drop it into the user&apos;s notes.
             </p>
           </div>
-          <button
-            onClick={fetchList}
-            disabled={loading}
-            className="px-4 py-2 bg-neutral-800 text-sm rounded-lg hover:bg-neutral-700 transition disabled:opacity-50"
-          >
-            {loading ? "Loading..." : "Refresh"}
-          </button>
+          <div className="flex items-center gap-3">
+            <a
+              href="/admin/bounty/pull-tiers"
+              className="text-sm text-neutral-400 hover:text-white"
+            >
+              Pull Tiers &rarr;
+            </a>
+            <button
+              onClick={fetchList}
+              disabled={loading}
+              className="px-4 py-2 bg-neutral-800 text-sm rounded-lg hover:bg-neutral-700 transition disabled:opacity-50"
+            >
+              {loading ? "Loading..." : "Refresh"}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4 mb-6">
