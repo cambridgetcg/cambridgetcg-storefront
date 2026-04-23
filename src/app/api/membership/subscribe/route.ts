@@ -32,7 +32,7 @@ export async function POST(request: Request) {
           currency: "gbp",
           product_data: {
             name: `Cambridge TCG Platinum — ${plan === "annual" ? "Annual" : "Monthly"}`,
-            description: "Zero fees, 12% store discount, 3x points, 8% cashback, priority everything",
+            description: "Zero fees, 12% store discount, 3x Berries, 8% cashback, priority everything",
           },
           unit_amount: Math.round(price * 100),
           recurring: { interval: interval as "month" | "year" },

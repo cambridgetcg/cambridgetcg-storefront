@@ -73,7 +73,7 @@ export async function enterRaffle(raffleId: string, userId: string, entries: num
 
   const totalCost = raffle.entry_cost_points * entries;
   const pointsResult = await spendPoints(userId, totalCost, "redeemed",
-    `${entries} raffle entry for "${raffle.title}" (${totalCost} pts)`, raffleId);
+    `${entries} raffle entry for "${raffle.title}" (${totalCost} Berries)`, raffleId);
 
   if (!pointsResult.success) return { success: false, error: pointsResult.error };
 
@@ -206,7 +206,7 @@ export async function openMysteryBox(boxId: string, userId: string): Promise<{
 
   // Spend points
   const pointsResult = await spendPoints(userId, box.cost_points, "redeemed",
-    `Opened mystery box "${box.title}" (${box.cost_points} pts)`, boxId);
+    `Opened mystery box "${box.title}" (${box.cost_points} Berries)`, boxId);
   if (!pointsResult.success) return { success: false, error: pointsResult.error };
 
   // Pick reward by probability (weighted random)
@@ -243,7 +243,7 @@ export async function openMysteryBox(boxId: string, userId: string): Promise<{
   // Auto-fulfill points and credit rewards
   if (selectedReward.reward_type === "points") {
     await earnPoints(userId, parseFloat(selectedReward.reward_value), "manual_credit",
-      `Won ${selectedReward.reward_value} points from "${box.title}"`, openResult.rows[0].id);
+      `Won ${selectedReward.reward_value} Berries from "${box.title}"`, openResult.rows[0].id);
     await query(`UPDATE mystery_box_opens SET fulfilled=true WHERE id=$1`, [openResult.rows[0].id]);
   } else if (selectedReward.reward_type === "credit") {
     await addCredit(userId, parseFloat(selectedReward.reward_value), "manual_adjustment",

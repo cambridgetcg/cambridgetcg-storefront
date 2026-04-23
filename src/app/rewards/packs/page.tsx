@@ -373,13 +373,13 @@ export default function PacksPage() {
           </Link>
           <h1 className="text-3xl font-black mb-2">Virtual Packs</h1>
           <p className="text-neutral-400">
-            Spend your points to rip virtual booster packs and win cards, credits,
+            Spend your Berries to rip virtual booster packs and win cards, credits,
             and bonus rewards.
           </p>
           {points !== null && (
             <div className="mt-4 inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-5 py-3">
               <span className="text-2xl font-bold text-amber-400">
-                {points.toLocaleString()} pts
+                {points.toLocaleString()} Berries
               </span>
             </div>
           )}
@@ -442,7 +442,7 @@ export default function PacksPage() {
                           </div>
                         )}
                         <div className="absolute top-3 right-3 bg-amber-500/90 text-black text-xs font-bold px-2.5 py-1 rounded-md">
-                          {pack.cost_points.toLocaleString()} pts
+                          {pack.cost_points.toLocaleString()} Berries
                         </div>
                         {pack.set_code && (
                           <div className="absolute top-3 left-3 bg-neutral-900/80 text-neutral-300 text-xs font-mono px-2 py-1 rounded-md">
@@ -469,7 +469,7 @@ export default function PacksPage() {
                         </div>
                         {loggedIn && !canAfford && (
                           <div className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-1.5 text-center">
-                            Not enough points
+                            Not enough Berries
                           </div>
                         )}
                       </div>
@@ -519,7 +519,7 @@ export default function PacksPage() {
                   </p>
                 )}
                 <p className="text-neutral-400 mb-6">
-                  {selectedPack.cost_points.toLocaleString()} points for 5 cards
+                  {selectedPack.cost_points.toLocaleString()} Berries for 5 cards
                 </p>
 
                 {error && (
@@ -530,7 +530,7 @@ export default function PacksPage() {
 
                 {points !== null && points < selectedPack.cost_points ? (
                   <div className="mb-4 rounded-lg p-3 text-sm bg-red-500/10 border border-red-500/30 text-red-400">
-                    Not enough points ({points.toLocaleString()} /{" "}
+                    Not enough Berries ({points.toLocaleString()} /{" "}
                     {selectedPack.cost_points.toLocaleString()})
                   </div>
                 ) : null}
@@ -552,7 +552,7 @@ export default function PacksPage() {
                     }
                     className="px-8 py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-neutral-700 disabled:text-neutral-500 text-black font-bold rounded-xl transition text-lg"
                   >
-                    Open Pack ({selectedPack.cost_points.toLocaleString()} pts)
+                    Open Pack ({selectedPack.cost_points.toLocaleString()} Berries)
                   </button>
                 </div>
               </div>
@@ -762,7 +762,7 @@ export default function PacksPage() {
                               <p className="text-xs text-neutral-500">
                                 {card.card_number ? `#${card.card_number}` : ""}{" "}
                                 {card.reward_type === "points"
-                                  ? `+${card.reward_value} pts`
+                                  ? `+${card.reward_value} Berries`
                                   : card.reward_type === "credit"
                                   ? `+$${card.reward_value.toFixed(2)} credit`
                                   : card.reward_type}
@@ -792,7 +792,7 @@ export default function PacksPage() {
                               .reduce((s, c) => s + c.reward_value, 0);
                             const parts: string[] = [];
                             if (pointsTotal > 0)
-                              parts.push(`${pointsTotal.toLocaleString()} pts`);
+                              parts.push(`${pointsTotal.toLocaleString()} Berries`);
                             if (creditTotal > 0)
                               parts.push(`$${creditTotal.toFixed(2)} credit`);
                             const otherCount = cards.filter(

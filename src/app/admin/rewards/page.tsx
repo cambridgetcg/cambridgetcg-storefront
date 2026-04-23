@@ -470,7 +470,7 @@ export default function AdminRewardsPage() {
                     >
                       <option value="physical">Physical Card/Product</option>
                       <option value="credit">Store Credit</option>
-                      <option value="points">Bonus Points</option>
+                      <option value="points">Bonus Berries</option>
                       <option value="discount">Discount Code</option>
                     </select>
                   </div>
@@ -611,7 +611,7 @@ export default function AdminRewardsPage() {
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4 mb-4 text-sm">
                         <div>
                           <span className="text-neutral-500">Entry Cost</span>
-                          <p className="text-white">{r.entry_cost_points} pts</p>
+                          <p className="text-white">{r.entry_cost_points} Berries</p>
                         </div>
                         <div>
                           <span className="text-neutral-500">Max/User</span>
@@ -661,7 +661,7 @@ export default function AdminRewardsPage() {
                                 <tr className="text-neutral-500 text-xs">
                                   <th className="text-left px-3 py-2">User</th>
                                   <th className="text-left px-3 py-2">Entries</th>
-                                  <th className="text-left px-3 py-2">Points Spent</th>
+                                  <th className="text-left px-3 py-2">Berries Spent</th>
                                   <th className="text-left px-3 py-2">Date</th>
                                 </tr>
                               </thead>
@@ -844,7 +844,7 @@ export default function AdminRewardsPage() {
                         </span>
                       </div>
                       <p className="text-xs text-neutral-500 mt-1">
-                        {b.cost_points} pts &middot; {b.total_opens} open{b.total_opens !== 1 ? "s" : ""}
+                        {b.cost_points} Berries &middot; {b.total_opens} open{b.total_opens !== 1 ? "s" : ""}
                         {" \u00b7 "}
                         {b.rewards?.length || 0} reward{(b.rewards?.length || 0) !== 1 ? "s" : ""}
                       </p>

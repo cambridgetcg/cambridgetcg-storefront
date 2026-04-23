@@ -376,7 +376,7 @@ export default function MembershipPage() {
           <PerkCard
             label="Berries"
             value={`${profile.perks.points_multiplier}x`}
-            description="points multiplier"
+            description="Berries multiplier"
             highlight={profile.perks.points_multiplier > 1}
           />
           <PerkCard

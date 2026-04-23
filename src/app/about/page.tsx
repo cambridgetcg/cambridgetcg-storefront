@@ -101,7 +101,7 @@ export default function AboutPage() {
                 <h3 className="text-lg font-bold text-white">Giving Back</h3>
               </div>
               <p className="text-neutral-400 leading-relaxed">
-                The best communities are generous. Our rewards system — raffles, mystery boxes, tier perks — exists to give back to the people who make this community what it is. Earn points by participating, spend them on experiences that surprise you. Every purchase, every trade, every interaction makes the community richer for everyone.
+                The best communities are generous. Our rewards system — raffles, mystery boxes, tier perks — exists to give back to the people who make this community what it is. Earn Berries by participating, spend them on experiences that surprise you. Every purchase, every trade, every interaction makes the community richer for everyone.
               </p>
             </div>
           </div>
@@ -132,7 +132,7 @@ export default function AboutPage() {
             </div>
             <div className="bg-neutral-900 rounded-xl p-5">
               <p className="text-amber-400 font-bold mb-1">Earn</p>
-              <p className="text-sm text-neutral-400">Every action earns points. Higher tiers unlock better rates, cashback, and exclusive rewards.</p>
+              <p className="text-sm text-neutral-400">Every action earns Berries. Higher tiers unlock better rates, cashback, and exclusive rewards.</p>
             </div>
             <div className="bg-neutral-900 rounded-xl p-5">
               <p className="text-amber-400 font-bold mb-1">Connect</p>

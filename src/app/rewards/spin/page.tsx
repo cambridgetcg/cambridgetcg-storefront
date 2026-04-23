@@ -337,7 +337,7 @@ function ResultPanel({
               disabled={spinning}
               className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-neutral-700 disabled:text-neutral-500 text-black font-bold rounded-xl transition"
             >
-              {spinning ? "Spinning..." : `Spin Again (${premiumCost.toLocaleString()} pts)`}
+              {spinning ? "Spinning..." : `Spin Again (${premiumCost.toLocaleString()} Berries)`}
             </button>
           )}
           <button
@@ -541,15 +541,15 @@ export default function SpinWheelPage() {
           </Link>
           <h1 className="text-3xl font-black mb-2">Daily Spin</h1>
           <p className="text-neutral-400">
-            Spin the wheel every day to win points, store credit, and more.
+            Spin the wheel every day to win Berries, store credit, and more.
           </p>
         </div>
 
-        {/* Points balance bar */}
+        {/* Berries balance bar */}
         {points !== null && (
           <div className="mb-8 inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-5 py-3">
             <span className="text-lg font-bold text-amber-400">
-              {points.toLocaleString()} pts
+              {points.toLocaleString()} Berries
             </span>
           </div>
         )}
@@ -606,7 +606,7 @@ export default function SpinWheelPage() {
                 >
                   {spinning
                     ? "Spinning..."
-                    : `Spin Again (${config.premiumCost.toLocaleString()} pts)`}
+                    : `Spin Again (${config.premiumCost.toLocaleString()} Berries)`}
                 </button>
               ) : (
                 <div className="w-full py-4 bg-neutral-800 border border-neutral-700 text-center text-neutral-500 font-bold rounded-xl text-lg">
@@ -632,7 +632,7 @@ export default function SpinWheelPage() {
               )}
               {config.premiumCost > 0 && (
                 <span className="ml-3">
-                  Extra spins: {config.premiumCost.toLocaleString()} pts each
+                  Extra spins: {config.premiumCost.toLocaleString()} Berries each
                 </span>
               )}
             </div>
@@ -679,7 +679,7 @@ export default function SpinWheelPage() {
                             : "bg-purple-500/20 text-purple-400"
                         }`}
                       >
-                        {entry.type}
+                        {entry.type === "points" ? "Berries" : entry.type}
                       </span>
                     </div>
                   ))}

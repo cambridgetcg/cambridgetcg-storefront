@@ -18,7 +18,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   // Spend points
   const pointsResult = await spendPoints(session.user.id, pack.cost_points, "redeemed",
-    `Opened pack: ${pack.title} (${pack.cost_points} pts)`, id);
+    `Opened pack: ${pack.title} (${pack.cost_points} Berries)`, id);
   if (!pointsResult.success) return NextResponse.json({ error: pointsResult.error }, { status: 400 });
 
   // Get pool

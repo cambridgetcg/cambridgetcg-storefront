@@ -196,7 +196,7 @@ export default function MysteryBoxDetailPage() {
                   >
                     {revealState === "opening"
                       ? "Opening..."
-                      : `Open Box (${box.cost_points.toLocaleString()} pts)`}
+                      : `Open Box (${box.cost_points.toLocaleString()} Berries)`}
                   </button>
                   {opensLeft <= 0 && (
                     <p className="text-neutral-500 text-sm mt-2 text-center">
@@ -205,7 +205,7 @@ export default function MysteryBoxDetailPage() {
                   )}
                   {points < box.cost_points && opensLeft > 0 && (
                     <p className="text-red-400 text-sm mt-2 text-center">
-                      Not enough points ({points.toLocaleString()} / {box.cost_points.toLocaleString()})
+                      Not enough Berries ({points.toLocaleString()} / {box.cost_points.toLocaleString()})
                     </p>
                   )}
                 </>
@@ -246,7 +246,7 @@ export default function MysteryBoxDetailPage() {
             <div className="grid grid-cols-3 gap-3 mb-6">
               <div className="rounded-lg bg-neutral-900 border border-neutral-800 p-3 text-center">
                 <p className="text-2xl font-bold text-purple-400">{box.cost_points.toLocaleString()}</p>
-                <p className="text-xs text-neutral-500">pts to open</p>
+                <p className="text-xs text-neutral-500">Berries to open</p>
               </div>
               <div className="rounded-lg bg-neutral-900 border border-neutral-800 p-3 text-center">
                 <p className="text-2xl font-bold">{box.total_opens.toLocaleString()}</p>

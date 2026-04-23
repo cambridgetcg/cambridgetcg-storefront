@@ -226,7 +226,7 @@ export async function spendPoints(userId: string, amount: number, type: string, 
   const currentBalance = user.rows[0]?.points_balance || 0;
 
   if (currentBalance < amount) {
-    return { success: false, error: `Insufficient points. You have ${currentBalance}, need ${amount}.` };
+    return { success: false, error: `Insufficient Berries. You have ${currentBalance}, need ${amount}.` };
   }
 
   const newBalance = currentBalance - amount;
@@ -296,7 +296,7 @@ export async function processOrderRewards(userId: string, orderTotal: number, or
 
   if (pointsEarned > 0) {
     await earnPoints(userId, pointsEarned, "order_earned",
-      `Earned ${pointsEarned} points on order (${perks.points_multiplier}x multiplier)`,
+      `Earned ${pointsEarned} Berries on order (${perks.points_multiplier}x multiplier)`,
       orderId, "order"
     );
   }

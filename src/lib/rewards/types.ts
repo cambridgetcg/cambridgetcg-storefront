@@ -88,7 +88,7 @@ export const RARITY_COLORS: Record<string, string> = {
 };
 
 export const REWARD_TYPES = [
-  { value: "points", label: "Bonus Points" },
+  { value: "points", label: "Bonus Berries" },
   { value: "credit", label: "Store Credit" },
   { value: "physical", label: "Physical Card/Product" },
   { value: "discount", label: "Discount Code" },

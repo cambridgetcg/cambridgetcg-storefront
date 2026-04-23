@@ -216,7 +216,7 @@ export default function AdventureModePage() {
           </h1>
           <p className="text-neutral-400 text-lg max-w-2xl mx-auto mb-2">
             Set sail on the Grand Line and prove your strength against legendary opponents.
-            Each victory brings you closer to becoming the Pirate King — earning points
+            Each victory brings you closer to becoming the Pirate King — earning Berries
             and store credit along the way.
           </p>
           <div className="flex items-center justify-center gap-4 mt-6">

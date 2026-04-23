@@ -117,7 +117,7 @@ export default function OGClaimPage() {
               <span className="text-emerald-400">&#10003;</span> 7% cashback on cash
             </div>
             <div className="flex items-center gap-2 text-neutral-300">
-              <span className="text-emerald-400">&#10003;</span> 7x points multiplier
+              <span className="text-emerald-400">&#10003;</span> 7x Berries multiplier
             </div>
             <div className="flex items-center gap-2 text-neutral-300">
               <span className="text-emerald-400">&#10003;</span> 0% P2P commission

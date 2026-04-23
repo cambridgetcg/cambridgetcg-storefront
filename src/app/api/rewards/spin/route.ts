@@ -91,14 +91,14 @@ export async function POST(request: Request) {
       [session.user.id]
     );
     if (parseInt(todaySpins.rows[0].count, 10) >= config.free_spins_per_day) {
-      return NextResponse.json({ error: "No free spins left today. Use premium spin (500 pts)." }, { status: 400 });
+      return NextResponse.json({ error: "No free spins left today. Use premium spin (500 Berries)." }, { status: 400 });
     }
   }
 
   // Spend points for premium spin
   if (isPremium) {
     const result = await spendPoints(session.user.id, config.premium_cost_points, "redeemed",
-      `Premium spin (${config.premium_cost_points} pts)`);
+      `Premium spin (${config.premium_cost_points} Berries)`);
     if (!result.success) return NextResponse.json({ error: result.error }, { status: 400 });
   }
 

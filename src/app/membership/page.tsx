@@ -3,7 +3,7 @@ import { formatPrice } from "@/lib/format";
 
 export const metadata = {
   title: "Membership — How It Works — Cambridge TCG",
-  description: "Cambridge TCG membership tiers explained. Earn points, get cashback, unlock rewards. Bronze, Silver, Gold, and Platinum tiers.",
+  description: "Cambridge TCG membership tiers explained. Earn Berries, get cashback, unlock rewards. Bronze, Silver, Gold, and Platinum tiers.",
 };
 
 export default function MembershipInfoPage() {
@@ -26,19 +26,19 @@ export default function MembershipInfoPage() {
         <div className="max-w-3xl mx-auto px-4 py-16">
           <h2 className="text-2xl font-bold text-white mb-10">How It All Works</h2>
 
-          {/* Points */}
+          {/* Berries */}
           <div className="mb-12">
             <div className="flex items-center gap-3 mb-4">
               <span className="w-10 h-10 bg-amber-500/20 rounded-full flex items-center justify-center text-lg">⭐</span>
-              <h3 className="text-xl font-bold text-white">Points</h3>
+              <h3 className="text-xl font-bold text-white">Berries</h3>
             </div>
             <div className="space-y-3 text-neutral-300 text-sm leading-relaxed pl-13">
-              <p>Earn <strong className="text-white">10 points per £1 spent</strong> on every cash purchase. Your tier multiplies this — Silver earns 15 points/£, Gold earns 20, Platinum earns 30.</p>
-              <p>Points are earned <strong className="text-white">only on the cash portion</strong> of your payment. Store credit used at checkout does not earn points.</p>
-              <p>Spend your points on <strong className="text-amber-400">raffles</strong> (enter for a chance to win high-value cards) and <strong className="text-purple-400">mystery boxes</strong> (guaranteed rewards — bonus points, store credit, or real cards).</p>
+              <p>Earn <strong className="text-white">10 Berries per £1 spent</strong> on every cash purchase. Your tier multiplies this — Silver earns 15 Berries/£, Gold earns 20, Platinum earns 30.</p>
+              <p>Berries are earned <strong className="text-white">only on the cash portion</strong> of your payment. Store credit used at checkout does not earn Berries.</p>
+              <p>Spend your Berries on <strong className="text-amber-400">raffles</strong> (enter for a chance to win high-value cards) and <strong className="text-purple-400">mystery boxes</strong> (guaranteed rewards — bonus Berries, store credit, or real cards).</p>
               <div className="bg-neutral-900 rounded-lg p-4 mt-3">
                 <p className="text-xs text-neutral-500 mb-2">Example: Buy a £100 card with cash as a Gold member</p>
-                <p className="text-white font-medium">£100 × 10 pts × 2.0x = <span className="text-amber-400">2,000 points</span></p>
+                <p className="text-white font-medium">£100 × 10 Berries × 2.0x = <span className="text-amber-400">2,000 Berries</span></p>
               </div>
             </div>
           </div>
@@ -75,7 +75,7 @@ export default function MembershipInfoPage() {
                 <p className="text-xs text-neutral-500 mb-2">Example: Platinum member buys a £100 card paying cash</p>
                 <p className="text-white font-medium">Price: £100 - 12% = <span className="text-purple-400">£88.00</span></p>
                 <p className="text-white font-medium mt-1">Cashback: £88 × 8% = <span className="text-emerald-400">£7.04 store credit</span></p>
-                <p className="text-white font-medium mt-1">Points: £88 × 10 × 3x = <span className="text-amber-400">2,640 points</span></p>
+                <p className="text-white font-medium mt-1">Berries: £88 × 10 × 3x = <span className="text-amber-400">2,640 Berries</span></p>
                 <p className="text-xs text-neutral-500 mt-2">Effective cost: £88 cash - £7.04 credit back = £80.96</p>
               </div>
             </div>
@@ -93,7 +93,7 @@ export default function MembershipInfoPage() {
               <ul className="list-disc pl-5 space-y-1">
                 <li>Store discount (Platinum) <strong className="text-white">applies</strong> — the price is reduced before credit is deducted</li>
                 <li>Cashback does <strong className="text-white">not apply</strong> to the credit portion — only on cash you spend</li>
-                <li>Points are <strong className="text-white">not earned</strong> on the credit portion — only on cash</li>
+                <li>Berries are <strong className="text-white">not earned</strong> on the credit portion — only on cash</li>
               </ul>
               <p>Store credit <strong className="text-white">can only be used at Cambridge TCG</strong>. It cannot be withdrawn as cash.</p>
               <div className="bg-neutral-900 rounded-lg p-4 mt-3">
@@ -101,7 +101,7 @@ export default function MembershipInfoPage() {
                 <p className="text-white font-medium">Price: £100 (no discount — Gold doesn&apos;t have store discount)</p>
                 <p className="text-white font-medium mt-1">Pays: £40 credit + £60 cash</p>
                 <p className="text-white font-medium mt-1">Cashback: £60 × 5% = <span className="text-emerald-400">£3.00 credit</span> (on cash only)</p>
-                <p className="text-white font-medium mt-1">Points: £60 × 10 × 2x = <span className="text-amber-400">1,200 pts</span> (on cash only)</p>
+                <p className="text-white font-medium mt-1">Berries: £60 × 10 × 2x = <span className="text-amber-400">1,200 Berries</span> (on cash only)</p>
               </div>
             </div>
           </div>
@@ -159,7 +159,7 @@ export default function MembershipInfoPage() {
                   <td className="text-center py-3 px-3 text-emerald-400 font-bold">8%</td>
                 </tr>
                 <tr className="border-b border-neutral-800">
-                  <td className="py-3 pr-4 text-white font-medium">Points Multiplier</td>
+                  <td className="py-3 pr-4 text-white font-medium">Berries Multiplier</td>
                   <td className="text-center py-3 px-3">1x</td>
                   <td className="text-center py-3 px-3">1.5x</td>
                   <td className="text-center py-3 px-3">2x</td>
@@ -199,9 +199,9 @@ export default function MembershipInfoPage() {
 
           <div className="space-y-6 text-sm text-neutral-300 leading-relaxed">
             <div className="bg-neutral-900 rounded-xl p-5">
-              <h3 className="text-white font-bold mb-2">What earns cashback and points?</h3>
-              <p><strong className="text-emerald-400">Cash payments</strong> — Yes, cashback and points are earned.</p>
-              <p><strong className="text-purple-400">Store credit</strong> — No. Credit used at checkout does not earn cashback or points.</p>
+              <h3 className="text-white font-bold mb-2">What earns cashback and Berries?</h3>
+              <p><strong className="text-emerald-400">Cash payments</strong> — Yes, cashback and Berries are earned.</p>
+              <p><strong className="text-purple-400">Store credit</strong> — No. Credit used at checkout does not earn cashback or Berries.</p>
               <p className="text-neutral-500 mt-2">This applies to all tiers including Platinum.</p>
             </div>
 
@@ -228,7 +228,7 @@ export default function MembershipInfoPage() {
         <div className="max-w-3xl mx-auto px-4 py-16 text-center">
           <h2 className="text-2xl font-bold text-white mb-4">Start Earning</h2>
           <p className="text-neutral-400 mb-8">
-            Create a free account and start earning points on every purchase.
+            Create a free account and start earning Berries on every purchase.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <Link href="/login" className="px-8 py-3 bg-amber-500 text-black font-bold rounded-lg hover:bg-amber-400 transition">

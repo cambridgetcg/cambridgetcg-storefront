@@ -173,7 +173,7 @@ export default function RaffleDetailPage() {
             <div className="grid grid-cols-3 gap-3 mb-6">
               <div className="rounded-lg bg-neutral-900 border border-neutral-800 p-3 text-center">
                 <p className="text-2xl font-bold text-amber-400">{raffle.entry_cost_points.toLocaleString()}</p>
-                <p className="text-xs text-neutral-500">pts / entry</p>
+                <p className="text-xs text-neutral-500">Berries / entry</p>
               </div>
               <div className="rounded-lg bg-neutral-900 border border-neutral-800 p-3 text-center">
                 <p className="text-2xl font-bold">{raffle.total_entries.toLocaleString()}</p>
@@ -249,9 +249,9 @@ export default function RaffleDetailPage() {
                         </div>
                       </div>
                       <div className="text-sm text-neutral-400">
-                        Total cost: <span className="font-bold text-amber-400">{totalCost.toLocaleString()} pts</span>
+                        Total cost: <span className="font-bold text-amber-400">{totalCost.toLocaleString()} Berries</span>
                         {totalCost > points && (
-                          <span className="text-red-400 ml-2">(not enough points)</span>
+                          <span className="text-red-400 ml-2">(not enough Berries)</span>
                         )}
                       </div>
                       <button
@@ -259,7 +259,7 @@ export default function RaffleDetailPage() {
                         disabled={submitting || totalCost > points}
                         className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-neutral-700 disabled:text-neutral-500 text-black font-bold rounded-xl transition"
                       >
-                        {submitting ? "Entering..." : `Enter Raffle (${totalCost.toLocaleString()} pts)`}
+                        {submitting ? "Entering..." : `Enter Raffle (${totalCost.toLocaleString()} Berries)`}
                       </button>
                     </div>
                   ) : (

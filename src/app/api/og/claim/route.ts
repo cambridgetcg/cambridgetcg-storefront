@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     <div style="background:#262626;border-radius:8px;padding:16px;margin:16px 0;font-size:13px;color:#d4d4d4;">
       <p style="margin:4px 0;">✓ 7% store discount on everything</p>
       <p style="margin:4px 0;">✓ 7% cashback on every purchase</p>
-      <p style="margin:4px 0;">✓ 7x points multiplier</p>
+      <p style="margin:4px 0;">✓ 7x Berries multiplier</p>
       <p style="margin:4px 0;">✓ 0% marketplace commission — forever</p>
       <p style="margin:4px 0;">✓ 0% auction fees — forever</p>
       <p style="margin:4px 0;">✓ 👑 OG badge on your profile</p>
