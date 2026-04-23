@@ -5,6 +5,7 @@ import { formatPrice } from "@/lib/format";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import HandSimulator from "@/components/deck-builder/HandSimulator";
+import DeckStatsPanel from "@/components/deck-builder/DeckStatsPanel";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -83,19 +84,6 @@ function rarityBadge(rarity: string | null) {
   );
 }
 
-/** Extract a numeric cost from the card number (heuristic: last digits after dash) */
-function extractCost(card: CatalogCard): number | null {
-  // One Piece card numbers: e.g. OP01-001, the cost is not in the number.
-  // We'll show cost as the numeric suffix as a rough grouping metric.
-  const match = card.card_number.match(/-(\d+)/);
-  if (match) {
-    const num = parseInt(match[1], 10);
-    // Map to cost buckets 0-10 (card index, not actual cost)
-    return Math.min(Math.floor(num / 15), 10);
-  }
-  return null;
-}
-
 function encodeDeck(leader: CatalogCard | null, entries: DeckEntry[]): string {
   const data = {
     l: leader?.sku || null,
@@ -120,54 +108,6 @@ function SkeletonCard() {
       <div className="aspect-[2.5/3.5] bg-neutral-800 rounded mb-2" />
       <div className="h-3 bg-neutral-800 rounded w-3/4 mb-1" />
       <div className="h-3 bg-neutral-800 rounded w-1/2" />
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Cost Curve Chart                                                   */
-/* ------------------------------------------------------------------ */
-
-function CostCurve({ entries }: { entries: DeckEntry[] }) {
-  // Group by card number bucket for a rough cost distribution
-  const buckets = new Map<number, number>();
-  for (const entry of entries) {
-    const cost = extractCost(entry.card);
-    if (cost !== null) {
-      buckets.set(cost, (buckets.get(cost) || 0) + entry.quantity);
-    }
-  }
-
-  if (buckets.size === 0) {
-    return (
-      <div className="text-xs text-neutral-500 py-4 text-center">
-        Add cards to see cost distribution
-      </div>
-    );
-  }
-
-  const maxBucket = Math.max(...buckets.values(), 1);
-  const allBuckets = Array.from({ length: 11 }, (_, i) => i);
-
-  return (
-    <div className="flex items-end gap-1 h-20">
-      {allBuckets.map((bucket) => {
-        const count = buckets.get(bucket) || 0;
-        const height = count > 0 ? Math.max((count / maxBucket) * 100, 8) : 0;
-        return (
-          <div key={bucket} className="flex-1 flex flex-col items-center gap-0.5">
-            {count > 0 && (
-              <span className="text-[9px] text-amber-400 font-bold">{count}</span>
-            )}
-            <div
-              className="w-full bg-amber-500/60 rounded-t transition-all duration-300"
-              style={{ height: `${height}%` }}
-              title={`Bucket ${bucket}: ${count} cards`}
-            />
-            <span className="text-[8px] text-neutral-500">{bucket}</span>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -213,8 +153,6 @@ export default function DeckBuilderPage() {
     [deckEntries]
   );
 
-  const uniqueCards = deckEntries.length;
-
   const totalValue = useMemo(
     () => deckEntries.reduce((sum, e) => sum + e.card.spot_price * e.quantity, 0),
     [deckEntries]
@@ -222,11 +160,6 @@ export default function DeckBuilderPage() {
 
   const leaderValue = leader ? leader.spot_price : 0;
   const fullDeckValue = totalValue + leaderValue;
-
-  const avgPrice = useMemo(() => {
-    if (totalCards === 0) return 0;
-    return totalValue / totalCards;
-  }, [totalValue, totalCards]);
 
   const deckWarnings = useMemo(() => {
     const warns: string[] = [];
@@ -965,32 +898,12 @@ export default function DeckBuilderPage() {
                     <h3 className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-2">
                       Stats
                     </h3>
-                    <div className="grid grid-cols-3 gap-2 text-center mb-3">
-                      <div>
-                        <p className="text-lg font-bold text-white">
-                          {totalCards}
-                        </p>
-                        <p className="text-[10px] text-neutral-500">Cards</p>
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-white">
-                          {uniqueCards}
-                        </p>
-                        <p className="text-[10px] text-neutral-500">Unique</p>
-                      </div>
-                      <div>
-                        <p className="text-lg font-bold text-amber-400">
-                          {formatPrice(avgPrice)}
-                        </p>
-                        <p className="text-[10px] text-neutral-500">
-                          Avg. Price
-                        </p>
-                      </div>
-                    </div>
-                    <h4 className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider mb-1">
-                      Distribution
-                    </h4>
-                    <CostCurve entries={deckEntries} />
+                    <DeckStatsPanel
+                      leader={leader}
+                      entries={deckEntries}
+                      totalCards={totalCards}
+                      maxDeckSize={MAX_DECK_SIZE}
+                    />
                   </div>
                 )}
 
