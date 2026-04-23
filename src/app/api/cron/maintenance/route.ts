@@ -16,6 +16,7 @@ import { runWishlistMatchSweep } from "@/lib/wishlist/matching";
 import { runAnnualSpendRecompute } from "@/lib/membership/spend-sweep";
 import { runSubscriptionExpirySweep } from "@/lib/membership/subscription-sweep";
 import { runPointsExpirySweep } from "@/lib/membership/points-expiry";
+import { runRaffleAutoDraw, retryWinnerNotifications } from "@/lib/rewards/raffle-sweep";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -84,9 +85,13 @@ export async function GET(request: Request) {
     runSubscriptionExpirySweep(),
     // Points expiry — self-gates to 02:30 UTC daily
     runPointsExpirySweep(),
+    // Raffle auto-draw + winner email
+    runRaffleAutoDraw(),
+    // Catch-up: notify winners whose first email failed
+    retryWinnerNotifications(),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick, priceAlertSweep, wishlistMatchSweep, spendRecompute, subSweep, pointsExpiry] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick, priceAlertSweep, wishlistMatchSweep, spendRecompute, subSweep, pointsExpiry, raffleSweep, raffleRetry] = results;
 
   const status = {
     market: market.status,
@@ -164,6 +169,14 @@ export async function GET(request: Request) {
         ? (pointsExpiry.value.ranInWindow
             ? { status: "fulfilled", ...pointsExpiry.value }
             : { status: "skipped" })
+        : { status: "rejected" },
+    raffleSweep:
+      raffleSweep.status === "fulfilled"
+        ? { status: "fulfilled", ...raffleSweep.value }
+        : { status: "rejected" },
+    raffleRetry:
+      raffleRetry.status === "fulfilled"
+        ? { status: "fulfilled", ...raffleRetry.value }
         : { status: "rejected" },
     durationMs: Date.now() - start,
   };
@@ -246,6 +259,16 @@ export async function GET(request: Request) {
       `[cron] points expiry: ${pointsExpiry.value.expired} users, ` +
       `${pointsExpiry.value.totalPointsExpired} berries expired, ${pointsExpiry.value.failures} failures`
     );
+  }
+  if (raffleSweep.status === "rejected") console.error("[cron] raffle sweep failed:", raffleSweep.reason);
+  else if (raffleSweep.value.drawn > 0) {
+    console.log(
+      `[cron] raffles: ${raffleSweep.value.drawn} drawn, ${raffleSweep.value.notified} notified, ` +
+      `${raffleSweep.value.failures} failures`
+    );
+  }
+  if (raffleRetry.status === "fulfilled" && raffleRetry.value.retried > 0) {
+    console.log(`[cron] raffle retry: ${raffleRetry.value.retried} winners notified`);
   }
   if (subSweep.status === "rejected") console.error("[cron] subscription sweep failed:", subSweep.reason);
   else if (subSweep.value.expired > 0) {
