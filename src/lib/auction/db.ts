@@ -54,6 +54,8 @@ export async function listAuctions(filters: {
   const result = await query(
     `SELECT a.id, a.title, a.auction_type, a.status, a.current_price, a.starting_price,
             a.buy_now_price, a.bid_count, a.starts_at, a.ends_at,
+            a.seller_user_id, a.seller_payout, a.seller_paid_at,
+            a.payout_method, a.payout_reference,
             (SELECT url FROM auction_images WHERE auction_id = a.id ORDER BY display_order LIMIT 1) as image_url
      FROM auctions a ${where}
      ORDER BY ${orderBy}
@@ -777,6 +779,60 @@ async function sweepUnpaidEndedAuctions(): Promise<void> {
       bidCount: 0,
     }).catch((err) => console.error("[auction] Unpaid-cancel admin email failed:", err));
   }
+}
+
+// ── Manual payout recording (provider-agnostic) ──
+// Mirrors market.recordTradePayout. Auctions only have payout for seller-
+// listed (consigned) auctions where seller_user_id is set. We refuse on
+// store-owned auctions (no seller to pay) and on unpaid auctions.
+export async function recordAuctionPayout(data: {
+  auctionId: string;
+  method: string;
+  reference?: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const r = await query(
+    `SELECT a.status, a.seller_paid_at, a.seller_payout, a.seller_user_id, a.title,
+            u.email AS seller_email
+       FROM auctions a
+       LEFT JOIN users u ON u.id = a.seller_user_id
+      WHERE a.id = $1`,
+    [data.auctionId]
+  );
+  if (r.rows.length === 0) return { ok: false, error: "Auction not found." };
+  const a = r.rows[0];
+
+  if (!a.seller_user_id) return { ok: false, error: "This auction has no seller to pay." };
+  if (a.seller_paid_at) return { ok: false, error: "Payout already recorded." };
+  if (a.status !== "paid") {
+    return { ok: false, error: `Cannot pay seller until auction is paid (currently ${a.status}).` };
+  }
+  if (!a.seller_payout) {
+    return { ok: false, error: "No seller_payout calculated yet — run calculate_payout first." };
+  }
+
+  await query(
+    `UPDATE auctions
+        SET seller_paid_at = NOW(),
+            payout_method = $2,
+            payout_reference = $3,
+            updated_at = NOW()
+      WHERE id = $1`,
+    [data.auctionId, data.method, data.reference || null]
+  );
+
+  // Notify the seller (best-effort). Reuses the auction email helper layout.
+  if (a.seller_email) {
+    const { sendStatusEmail } = await import("@/lib/market/email");
+    sendStatusEmail({
+      email: a.seller_email,
+      cardName: a.title,
+      subject: `Payout sent: ${a.title} (£${a.seller_payout})`,
+      heading: "Payout sent",
+      body: `Your payout of <strong>£${a.seller_payout}</strong> for <strong>${a.title}</strong> has been sent via ${data.method}${data.reference ? ` (ref <code>${data.reference}</code>)` : ""}.`,
+    }).catch((err) => console.error("[auction] Payout email failed:", err));
+  }
+
+  return { ok: true };
 }
 
 // ── Cron entry point ──

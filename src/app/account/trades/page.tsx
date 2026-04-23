@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { formatPrice } from "@/lib/format";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import type { MarketOrder, MarketTrade, EscrowStatus } from "@/lib/market/types";
+import { DISPUTE_REASONS } from "@/lib/trust/types";
 
 type TradeWithRole = MarketTrade & {
   current_user_role: "buyer" | "seller";
@@ -161,6 +162,11 @@ export default function TradesPage() {
   const [orders, setOrders] = useState<MarketOrder[]>([]);
   const [trades, setTrades] = useState<TradeWithRole[]>([]);
   const [paying, setPaying] = useState<string | null>(null);
+  const [disputeFor, setDisputeFor] = useState<TradeWithRole | null>(null);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeDescription, setDisputeDescription] = useState("");
+  const [disputeSubmitting, setDisputeSubmitting] = useState(false);
+  const [disputeError, setDisputeError] = useState<string | null>(null);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [loadingTrades, setLoadingTrades] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
@@ -409,6 +415,22 @@ export default function TradesPage() {
                             {trade.escrow_status === "awaiting_payment" && !isBuyer && (
                               <span className="text-[10px] text-neutral-500">Awaiting buyer payment</span>
                             )}
+                            {/* Dispute is meaningful when money has changed hands but the trade
+                                isn't yet closed. Both parties can raise. */}
+                            {(["paid","awaiting_shipment","shipped_to_ctcg","received_by_ctcg","verified","shipped_to_buyer"] as const)
+                              .includes(trade.escrow_status as never) && (
+                              <button
+                                onClick={() => {
+                                  setDisputeFor(trade);
+                                  setDisputeReason("");
+                                  setDisputeDescription("");
+                                  setDisputeError(null);
+                                }}
+                                className="px-2 py-0.5 text-[10px] font-medium text-red-400 border border-red-500/30 rounded-md hover:bg-red-500/10 transition"
+                              >
+                                Open dispute
+                              </button>
+                            )}
                           </div>
                         </td>
                         <td className="p-4 text-neutral-500 text-xs">{formatDate(trade.created_at)}</td>
@@ -419,6 +441,88 @@ export default function TradesPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {disputeFor && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => !disputeSubmitting && setDisputeFor(null)}>
+          <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold text-white mb-1">Open a dispute</h2>
+            <p className="text-xs text-neutral-400 mb-4">
+              {disputeFor.card_name || disputeFor.sku} &middot; {formatPrice(parseFloat(disputeFor.price))}
+            </p>
+
+            <label className="block text-xs text-neutral-500 mb-1">Reason</label>
+            <select
+              value={disputeReason}
+              onChange={(e) => setDisputeReason(e.target.value)}
+              className="w-full px-3 py-2 mb-3 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm"
+            >
+              <option value="">Select reason</option>
+              {DISPUTE_REASONS.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+
+            <label className="block text-xs text-neutral-500 mb-1">What happened?</label>
+            <textarea
+              value={disputeDescription}
+              onChange={(e) => setDisputeDescription(e.target.value)}
+              placeholder="Describe the issue (20+ characters). Include any tracking refs, photos already shared, or dates."
+              rows={4}
+              className="w-full px-3 py-2 mb-3 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm resize-none"
+            />
+
+            {disputeError && <p className="text-xs text-red-400 mb-2">{disputeError}</p>}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDisputeFor(null)}
+                disabled={disputeSubmitting}
+                className="px-3 py-1.5 text-xs font-medium text-neutral-300 hover:text-white transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  if (!disputeReason || disputeDescription.trim().length < 20) {
+                    setDisputeError("Pick a reason and describe the issue (20+ chars).");
+                    return;
+                  }
+                  setDisputeSubmitting(true);
+                  setDisputeError(null);
+                  try {
+                    // Reuses the existing trust/disputes endpoint built in
+                    // src/app/api/trust/disputes; that route handles trade
+                    // membership + UK-verification checks.
+                    const res = await fetch(`/api/trust/disputes`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        tradeId: disputeFor.id,
+                        reason: disputeReason,
+                        description: disputeDescription.trim(),
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                      setDisputeError(data.error || "Failed to open dispute");
+                      return;
+                    }
+                    // Reflect the disputed state locally so the UI updates without a refetch
+                    setTrades((prev) => prev.map((t) => t.id === disputeFor.id ? { ...t, escrow_status: "disputed" } : t));
+                    setDisputeFor(null);
+                  } finally {
+                    setDisputeSubmitting(false);
+                  }
+                }}
+                disabled={disputeSubmitting}
+                className="px-3 py-1.5 text-xs font-bold bg-red-500 text-white rounded-md hover:bg-red-400 transition disabled:opacity-50"
+              >
+                {disputeSubmitting ? "Submitting..." : "Open dispute"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

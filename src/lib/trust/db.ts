@@ -83,13 +83,27 @@ export async function listAllVerifications(): Promise<(UserVerification & { emai
 // ══════════════════════════════════════════════════════════════
 
 export async function raiseDispute(tradeId: string, userId: string, reason: string, description: string): Promise<TradeDispute> {
-  // Mark the trade as disputed
-  await query(`UPDATE market_trades SET escrow_status='disputed', dispute_reason=$2, updated_at=NOW() WHERE id=$1`, [tradeId, reason]);
+  // Persist the reason on the trade row (separate from escrow_status, which
+  // is set by updateEscrowStatus below — that path also sends both parties
+  // the "dispute opened" email via the market email module).
+  await query(
+    `UPDATE market_trades SET dispute_reason=$2, updated_at=NOW() WHERE id=$1`,
+    [tradeId, reason]
+  );
 
   const result = await query(
     `INSERT INTO trade_disputes (trade_id, raised_by, reason, description) VALUES ($1,$2,$3,$4) RETURNING *`,
     [tradeId, userId, reason, description]
   );
+
+  // Cascade to the trade lifecycle (and trigger emails) via the market layer.
+  // Imported lazily to avoid a static cross-module cycle if the market db
+  // ever needs to call into trust.
+  const { updateEscrowStatus } = await import("@/lib/market/db");
+  await updateEscrowStatus(tradeId, "disputed", {
+    adminNotes: `Dispute raised: ${reason}`,
+  });
+
   return result.rows[0] as TradeDispute;
 }
 
@@ -160,7 +174,20 @@ export async function resolveDispute(disputeId: string, data: {
     [disputeId, statusMap[data.resolutionType], data.resolutionType,
      data.resolutionNotes, data.refundAmount?.toFixed(2) ?? null]
   );
-  return result.rows[0] as TradeDispute;
+  const dispute = result.rows[0] as TradeDispute;
+
+  // Cascade onto the trade: refund_buyer / split → refunded, others → completed.
+  // updateEscrowStatus also fires the resolution emails to both parties.
+  const tradeStatus =
+    data.resolutionType === "refund_buyer" || data.resolutionType === "split"
+      ? "refunded"
+      : "completed";
+  const { updateEscrowStatus } = await import("@/lib/market/db");
+  await updateEscrowStatus(dispute.trade_id, tradeStatus, {
+    adminNotes: `Dispute resolved (${data.resolutionType}): ${data.resolutionNotes}`,
+  });
+
+  return dispute;
 }
 
 export async function addDisputeMessage(disputeId: string, senderId: string, message: string, isAdmin: boolean): Promise<DisputeMessage> {

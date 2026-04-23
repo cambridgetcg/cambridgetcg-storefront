@@ -109,6 +109,25 @@ export async function sendStatusEmail(d: {
   await send(d.email, d.subject, html, text);
 }
 
+// ── Payout sent ──
+
+export async function sendPayoutEmail(d: {
+  email: string; cardName: string; amount: string; method: string; reference?: string | null;
+}) {
+  const subject = `Payout sent: ${d.cardName} (${d.amount})`;
+  const refLine = d.reference ? `Reference: ${d.reference}\n` : "";
+  const text = `Your payout of ${d.amount} for "${d.cardName}" has been sent via ${d.method}.\n${refLine}${tradesUrl}`;
+  const html = tpl(
+    "Payout sent",
+    `<p>Your payout for <strong>${d.cardName}</strong> has been sent.</p>
+     <p>Amount: <strong style="color:#34d399;">${d.amount}</strong><br/>
+        Method: ${d.method}${d.reference ? `<br/>Reference: <code>${d.reference}</code>` : ""}</p>
+     <p>Allow a few business days for the payment to land in your account.</p>`,
+    "View Trade", tradesUrl
+  );
+  await send(d.email, subject, html, text);
+}
+
 // ── Cancel (timeout) ──
 
 export async function sendCancelEmail(d: {

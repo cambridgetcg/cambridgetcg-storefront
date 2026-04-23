@@ -279,6 +279,41 @@ export default function AdminMarketPage() {
     }
   }
 
+  async function handleRecordPayout(tradeId: string) {
+    // Two-step prompt — admin-only surface, keep it simple. Method is the
+    // free-form provider name; reference is whatever the admin pasted from
+    // their banking/PayPal/Stripe Connect dashboard.
+    const method = window.prompt(
+      "Payout method (bank_transfer / paypal / crypto / stripe_connect / mangopay / store_credit / other):",
+      "bank_transfer"
+    );
+    if (!method) return;
+    const reference = window.prompt("Reference (transaction id, bank ref, etc.) — optional:") ?? "";
+    setUpdating(tradeId);
+    try {
+      const res = await fetch(`/api/market/trades/${tradeId}/payout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method, reference: reference || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        window.alert(data.error || "Failed to record payout");
+        return;
+      }
+      // Reflect locally so the button hides without a refetch
+      setTrades((prev) =>
+        prev.map((t) =>
+          t.id === tradeId
+            ? { ...t, seller_paid_at: new Date().toISOString(), payout_method: method, payout_reference: reference || null }
+            : t
+        )
+      );
+    } finally {
+      setUpdating(null);
+    }
+  }
+
   async function handlePhotoAction(tradeId: string, action: "approve" | "reject") {
     setUpdating(tradeId);
     try {
@@ -467,6 +502,7 @@ export default function AdminMarketPage() {
                   onAdvance={handleAdvance}
                   onSaveNotes={handleSaveNotes}
                   onPhotoAction={handlePhotoAction}
+                  onRecordPayout={handleRecordPayout}
                 />
               ))}
             </div>
@@ -499,6 +535,7 @@ export default function AdminMarketPage() {
                   onAdvance={handleAdvance}
                   onSaveNotes={handleSaveNotes}
                   onPhotoAction={handlePhotoAction}
+                  onRecordPayout={handleRecordPayout}
                 />
               ))}
             </div>
@@ -523,6 +560,7 @@ function TradeRow({
   onAdvance,
   onSaveNotes,
   onPhotoAction,
+  onRecordPayout,
 }: {
   trade: MarketTrade;
   expanded: string | null;
@@ -535,6 +573,7 @@ function TradeRow({
   onAdvance: (trade: MarketTrade, transition: Transition) => void;
   onSaveNotes: (trade: MarketTrade) => void;
   onPhotoAction: (tradeId: string, action: "approve" | "reject") => void;
+  onRecordPayout: (tradeId: string) => void;
 }) {
   const isExpanded = expanded === trade.id;
   const transitions = getTransitions(trade.escrow_status);
@@ -860,6 +899,35 @@ function TradeRow({
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Seller payout — surfaces only after the trade is completed.
+              Two-prompt flow records what was paid out off-platform; the
+              backend stamps seller_paid_at + method/reference and emails
+              the seller a receipt. */}
+          {trade.escrow_status === "completed" && (
+            <div className="mb-4">
+              <p className="text-xs text-neutral-500 uppercase tracking-wide mb-2">Seller Payout</p>
+              {trade.seller_paid_at ? (
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-sm">
+                  <p className="text-emerald-400 font-medium">
+                    Paid {new Date(trade.seller_paid_at).toLocaleDateString("en-GB")}
+                    {trade.payout_method ? ` via ${trade.payout_method}` : ""}
+                  </p>
+                  {trade.payout_reference && (
+                    <p className="text-xs text-neutral-400 mt-1 font-mono">{trade.payout_reference}</p>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => onRecordPayout(trade.id)}
+                  disabled={updating === trade.id}
+                  className="px-4 py-1.5 bg-emerald-500 text-black text-sm font-bold rounded-lg hover:bg-emerald-400 transition disabled:opacity-50"
+                >
+                  Record Payout (£{trade.seller_payout})
+                </button>
+              )}
             </div>
           )}
 

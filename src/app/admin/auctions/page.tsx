@@ -22,6 +22,10 @@ interface AuctionSummary {
   seller_user_id?: string | null;
   seller_name?: string | null;
   seller_email?: string | null;
+  seller_payout?: string | null;
+  seller_paid_at?: string | null;
+  payout_method?: string | null;
+  payout_reference?: string | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -182,6 +186,42 @@ export default function AdminAuctionsPage() {
       }
     } catch {
       toast("Network error.", "error");
+    } finally {
+      setApproving(null);
+    }
+  }
+
+  async function handleRecordPayout(id: string) {
+    const method = window.prompt(
+      "Payout method (bank_transfer / paypal / crypto / stripe_connect / mangopay / store_credit / other):",
+      "bank_transfer"
+    );
+    if (!method) return;
+    const reference = window.prompt("Reference (transaction id, bank ref, etc.) — optional:") ?? "";
+    setApproving(id);
+    try {
+      const res = await fetch(`/api/auctions/${id}/payout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method, reference: reference || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast(data.error || "Failed to record payout", "error");
+        return;
+      }
+      setAuctions((prev) =>
+        prev.map((a) =>
+          a.id === id
+            ? {
+                ...a,
+                seller_paid_at: new Date().toISOString(),
+                payout_method: method,
+                payout_reference: reference || null,
+              }
+            : a
+        )
+      );
     } finally {
       setApproving(null);
     }
@@ -449,6 +489,34 @@ export default function AdminAuctionsPage() {
                     >
                       Delete Draft
                     </button>
+                  )}
+
+                  {/* Seller payout — only for consigned auctions that have been paid by buyer */}
+                  {a.seller_user_id && a.status === "paid" && (
+                    <div className="mt-3 pt-3 border-t border-neutral-800">
+                      <p className="text-xs text-neutral-500 uppercase tracking-wide mb-2">Seller Payout</p>
+                      {a.seller_paid_at ? (
+                        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 text-sm">
+                          <p className="text-emerald-400 font-medium">
+                            Paid {new Date(a.seller_paid_at).toLocaleDateString("en-GB")}
+                            {a.payout_method ? ` via ${a.payout_method}` : ""}
+                          </p>
+                          {a.payout_reference && (
+                            <p className="text-xs text-neutral-400 mt-1 font-mono">{a.payout_reference}</p>
+                          )}
+                        </div>
+                      ) : a.seller_payout ? (
+                        <button
+                          onClick={() => handleRecordPayout(a.id)}
+                          disabled={approving === a.id}
+                          className="px-4 py-1.5 bg-emerald-500 text-black text-sm font-bold rounded-lg hover:bg-emerald-400 transition disabled:opacity-50"
+                        >
+                          Record Payout (£{a.seller_payout})
+                        </button>
+                      ) : (
+                        <p className="text-xs text-neutral-500">Calculate seller_payout first (action: calculate_payout).</p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

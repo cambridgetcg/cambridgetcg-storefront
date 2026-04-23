@@ -59,6 +59,9 @@ export interface MarketTrade {
   payout_hold_days: number | null;
   payment_expires_at: string | null;
   stripe_session_id: string | null;
+  seller_paid_at: string | null;
+  payout_method: string | null;
+  payout_reference: string | null;
   created_at: string;
   // Joined
   buyer_name?: string | null;

@@ -407,22 +407,41 @@ export async function getMarketSummaries(filters: {
     params
   );
 
-  const cards: OrderBookSummary[] = [];
-  for (const row of result.rows) {
-    // Get last trade + 24h count
-    const tradeInfo = await query(
-      `SELECT price FROM market_trades WHERE sku = $1 ORDER BY created_at DESC LIMIT 1`,
-      [row.sku]
-    );
-    const tradeCount = await query(
-      `SELECT COUNT(*) FROM market_trades WHERE sku = $1 AND created_at > NOW() - INTERVAL '24 hours'`,
-      [row.sku]
-    );
+  // Resolve last-trade-price + 24h trade count for the page in a single
+  // round trip rather than 2 queries per row. Uses DISTINCT ON for last
+  // trade and a filtered COUNT for the rolling window.
+  const skus = result.rows.map((r) => r.sku);
+  const tradeStats = skus.length === 0
+    ? new Map<string, { lastPrice: string | null; count24h: number }>()
+    : await (async () => {
+        const r = await query(
+          `SELECT sku,
+                  MAX(price) FILTER (WHERE rn = 1)             AS last_price,
+                  COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') AS count_24h
+             FROM (
+               SELECT sku, price, created_at,
+                      ROW_NUMBER() OVER (PARTITION BY sku ORDER BY created_at DESC) AS rn
+                 FROM market_trades
+                WHERE sku = ANY($1)
+             ) t
+            GROUP BY sku`,
+          [skus]
+        );
+        const m = new Map<string, { lastPrice: string | null; count24h: number }>();
+        for (const row of r.rows) {
+          m.set(row.sku, {
+            lastPrice: row.last_price,
+            count24h: parseInt(row.count_24h, 10),
+          });
+        }
+        return m;
+      })();
 
+  const cards: OrderBookSummary[] = result.rows.map((row) => {
     const bestBid = row.best_bid ? parseFloat(row.best_bid) : null;
     const bestAsk = row.best_ask ? parseFloat(row.best_ask) : null;
-
-    cards.push({
+    const stats = tradeStats.get(row.sku);
+    return {
       sku: row.sku,
       card_name: row.card_name,
       set_code: row.set_code,
@@ -433,10 +452,10 @@ export async function getMarketSummaries(filters: {
       spread: bestBid && bestAsk ? bestAsk - bestBid : null,
       bid_depth: parseInt(row.bid_depth, 10),
       ask_depth: parseInt(row.ask_depth, 10),
-      last_trade_price: tradeInfo.rows[0]?.price || null,
-      trade_count_24h: parseInt(tradeCount.rows[0].count, 10),
-    });
-  }
+      last_trade_price: stats?.lastPrice ?? null,
+      trade_count_24h: stats?.count24h ?? 0,
+    };
+  });
 
   return { cards, total };
 }
@@ -705,6 +724,63 @@ export async function reviewTradePhoto(photoId: string, approved: boolean): Prom
 export async function deleteTradePhoto(photoId: string): Promise<string | null> {
   const r = await query(`DELETE FROM trade_photos WHERE id = $1 RETURNING s3_key`, [photoId]);
   return r.rows[0]?.s3_key ?? null;
+}
+
+// ── Manual payout recording (provider-agnostic) ──
+// Admin-only path. Records that the seller has been paid off-platform (or
+// via any provider). Does not initiate any money movement — that happens in
+// the admin's own banking/PayPal/Stripe Connect/Mangopay UI. The trade row
+// remains the source of truth for "did this seller get paid yet?".
+//
+// Refuses to record a payout twice. Refuses to record before the trade is
+// completed (so admin doesn't accidentally pay before fulfillment).
+export async function recordTradePayout(data: {
+  tradeId: string;
+  method: string;        // bank_transfer | paypal | crypto | stripe_connect | mangopay | other
+  reference?: string;    // provider txn id, bank ref, etc. Free-form.
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const tradeRes = await query(
+    `SELECT t.escrow_status, t.seller_paid_at, t.seller_payout,
+            su.email AS seller_email,
+            COALESCE(o.card_name, t.sku) AS card_name
+       FROM market_trades t
+       JOIN users su ON su.id = t.seller_id
+       LEFT JOIN market_orders o ON o.id = t.bid_order_id
+      WHERE t.id = $1`,
+    [data.tradeId]
+  );
+  if (tradeRes.rows.length === 0) return { ok: false, error: "Trade not found." };
+  const trade = tradeRes.rows[0];
+
+  if (trade.seller_paid_at) {
+    return { ok: false, error: "Payout already recorded for this trade." };
+  }
+  if (trade.escrow_status !== "completed") {
+    return { ok: false, error: `Cannot pay seller until trade is completed (currently ${trade.escrow_status}).` };
+  }
+
+  await query(
+    `UPDATE market_trades
+        SET seller_paid_at = NOW(),
+            payout_method = $2,
+            payout_reference = $3,
+            updated_at = NOW()
+      WHERE id = $1`,
+    [data.tradeId, data.method, data.reference || null]
+  );
+
+  // Receipt to the seller (fire-and-forget)
+  const { sendPayoutEmail } = await import("./email");
+  const { formatPrice } = await import("@/lib/format");
+  sendPayoutEmail({
+    email: trade.seller_email,
+    cardName: trade.card_name,
+    amount: formatPrice(parseFloat(trade.seller_payout)),
+    method: data.method,
+    reference: data.reference,
+  }).catch((err) => console.error("[market] Payout email failed:", err));
+
+  return { ok: true };
 }
 
 // ── Cron entry point ──
