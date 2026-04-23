@@ -28,17 +28,74 @@ export default function PortfolioPage() {
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [trends, setTrends] = useState<Record<string, { d7: number | null; d30: number | null }>>({});
   const [showCsv, setShowCsv] = useState(false);
+  const [showcaseIds, setShowcaseIds] = useState<Set<string>>(new Set());
+  const [profile, setProfile] = useState<{ username: string | null; is_public: boolean } | null>(null);
+  const [copiedShareLink, setCopiedShareLink] = useState(false);
+
+  async function refreshShowcase() {
+    try {
+      const res = await fetch("/api/social/showcase");
+      if (res.ok) {
+        const d = await res.json();
+        const ids = new Set<string>(
+          (d.showcase ?? []).map((c: { portfolio_card_id: string }) => c.portfolio_card_id),
+        );
+        setShowcaseIds(ids);
+      }
+    } catch { /* ignore */ }
+  }
+
+  async function toggleShowcase(portfolioCardId: string, currentlyInShowcase: boolean) {
+    // Optimistic
+    setShowcaseIds((prev) => {
+      const next = new Set(prev);
+      if (currentlyInShowcase) next.delete(portfolioCardId);
+      else next.add(portfolioCardId);
+      return next;
+    });
+    try {
+      const res = await fetch("/api/social/showcase", {
+        method: currentlyInShowcase ? "DELETE" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ portfolioCardId }),
+      });
+      if (!res.ok) {
+        // Rollback on failure
+        setShowcaseIds((prev) => {
+          const next = new Set(prev);
+          if (currentlyInShowcase) next.add(portfolioCardId);
+          else next.delete(portfolioCardId);
+          return next;
+        });
+      }
+    } catch {
+      // Rollback on error too
+      refreshShowcase();
+    }
+  }
 
   const load = useCallback(() => {
     Promise.all([
       fetch("/api/portfolio").then((r) => r.json()),
       fetch("/api/portfolio/history?days=30").then((r) => r.json()),
       fetch("/api/portfolio/trends").then((r) => r.json()).catch(() => ({ trends: {} })),
-    ]).then(([portfolio, history, trendsData]) => {
+      fetch("/api/social/showcase").then((r) => (r.ok ? r.json() : { showcase: [] })).catch(() => ({ showcase: [] })),
+      fetch("/api/social/profile").then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(([portfolio, history, trendsData, showcaseData, profileData]) => {
       setCards(portfolio.cards || []);
       setSummary(portfolio.summary || null);
       setSnapshots(history.snapshots || []);
       setTrends(trendsData.trends || {});
+      const ids = new Set<string>(
+        (showcaseData.showcase ?? []).map((c: { portfolio_card_id: string }) => c.portfolio_card_id),
+      );
+      setShowcaseIds(ids);
+      if (profileData?.profile) {
+        setProfile({
+          username: profileData.profile.username ?? null,
+          is_public: Boolean(profileData.profile.is_public),
+        });
+      }
       setLoading(false);
     });
   }, []);
@@ -177,6 +234,63 @@ export default function PortfolioPage() {
         </div>
       )}
 
+      {/* Public showcase banner */}
+      {profile && cards.length > 0 && (
+        <div className="mb-6 bg-gradient-to-r from-amber-500/10 via-neutral-900 to-fuchsia-500/10 border border-amber-500/20 rounded-xl px-5 py-3 flex items-center justify-between flex-wrap gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">
+              Your showcase · {showcaseIds.size} featured
+            </p>
+            {profile.username && profile.is_public ? (
+              <p className="text-sm text-neutral-300 mt-0.5 truncate">
+                Public at{" "}
+                <Link href={`/u/${profile.username}`} className="text-amber-400 underline hover:text-amber-300">
+                  /u/{profile.username}
+                </Link>
+              </p>
+            ) : !profile.username ? (
+              <p className="text-xs text-neutral-500 mt-0.5">
+                Pick a username in{" "}
+                <Link href="/account/profile" className="text-amber-400 hover:text-amber-300 underline">
+                  your profile
+                </Link>{" "}
+                to get a shareable URL.
+              </p>
+            ) : (
+              <p className="text-xs text-neutral-500 mt-0.5">
+                Profile is private.{" "}
+                <Link href="/account/profile" className="text-amber-400 hover:text-amber-300 underline">
+                  Make it public
+                </Link>{" "}
+                to share /u/{profile.username}.
+              </p>
+            )}
+          </div>
+          <div className="flex gap-2">
+            {profile.username && profile.is_public && (
+              <button
+                onClick={() => {
+                  const url = `${window.location.origin}/u/${profile.username}`;
+                  navigator.clipboard.writeText(url).then(
+                    () => { setCopiedShareLink(true); setTimeout(() => setCopiedShareLink(false), 2000); },
+                    () => {},
+                  );
+                }}
+                className="text-xs bg-amber-500 hover:bg-amber-400 text-black font-bold rounded px-3 py-1.5 transition-colors whitespace-nowrap"
+              >
+                {copiedShareLink ? "Copied!" : "Copy share link"}
+              </button>
+            )}
+            <Link
+              href={profile.username ? `/u/${profile.username}` : "/account/profile"}
+              className="text-xs bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded px-3 py-1.5 transition-colors whitespace-nowrap"
+            >
+              Preview
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* Analytics breakdown — sets / rarity / condition / concentration */}
       {cards.length > 0 && summary && (
         <div className="mb-6">
@@ -234,6 +348,26 @@ export default function PortfolioPage() {
                     No Image
                   </div>
                 )}
+                {/* Showcase toggle — amber star when featured */}
+                {(() => {
+                  const inShowcase = showcaseIds.has(card.id);
+                  return (
+                    <button
+                      onClick={() => toggleShowcase(card.id, inShowcase)}
+                      className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all ${
+                        inShowcase
+                          ? "bg-amber-500 text-black shadow-lg shadow-amber-500/30 hover:bg-amber-400"
+                          : "bg-black/50 backdrop-blur text-white/70 hover:text-amber-400 hover:bg-black/70"
+                      }`}
+                      title={inShowcase ? "Remove from public showcase" : "Feature in public showcase"}
+                      aria-label={inShowcase ? "Remove from showcase" : "Add to showcase"}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill={inShowcase ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.8">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3l2.4 5.7 6.1.5-4.6 4 1.4 6-5.3-3.2-5.3 3.2 1.4-6-4.6-4 6.1-.5z" />
+                      </svg>
+                    </button>
+                  );
+                })()}
               </div>
 
               <div className="p-3 flex-1 flex flex-col">
