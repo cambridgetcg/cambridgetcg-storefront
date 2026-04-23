@@ -6,6 +6,7 @@ import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
 import HandSimulator from "@/components/deck-builder/HandSimulator";
 import DeckStatsPanel from "@/components/deck-builder/DeckStatsPanel";
+import BulkImport, { type ParsedEntry } from "@/components/deck-builder/BulkImport";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -143,6 +144,7 @@ export default function DeckBuilderPage() {
   const [leaderSearchMode, setLeaderSearchMode] = useState(false);
   const [mobileShowDeck, setMobileShowDeck] = useState(false);
   const [showSimulator, setShowSimulator] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
@@ -422,6 +424,65 @@ export default function DeckBuilderPage() {
   }
 
   /* ---- Share ---- */
+  /* ---- Bulk import ---- */
+  async function handleBulkImport(entries: ParsedEntry[]): Promise<{ added: number; notFound: string[] }> {
+    // Resolve each card number to a catalog card. We fire the lookups in
+    // parallel — the catalog API supports search-by-card-number via the ?q=
+    // param (substring match on SKU).
+    const resolved: Array<{ parsed: ParsedEntry; card: CatalogCard | null }> = await Promise.all(
+      entries.map(async (p) => {
+        try {
+          const res = await fetch(
+            `/api/market/catalog?game=one-piece&q=${encodeURIComponent(p.cardNumber)}&limit=5`,
+          );
+          if (!res.ok) return { parsed: p, card: null };
+          const d = await res.json();
+          // Prefer exact card_number match when multiple cards come back
+          const cards: CatalogCard[] = d.cards ?? [];
+          const exact = cards.find((c) => c.card_number.toUpperCase() === p.cardNumber);
+          return { parsed: p, card: exact ?? cards[0] ?? null };
+        } catch {
+          return { parsed: p, card: null };
+        }
+      }),
+    );
+
+    const notFound: string[] = [];
+    let added = 0;
+
+    // Apply to deck state. Leader lines take over the leader slot; others
+    // go to deckEntries, respecting MAX_COPIES.
+    const newEntries = [...deckEntries];
+    let newLeader = leader;
+
+    for (const { parsed, card } of resolved) {
+      if (!card) { notFound.push(parsed.cardNumber); continue; }
+      if (parsed.isLeader) {
+        newLeader = card;
+        added += 1;
+        continue;
+      }
+      const existingIdx = newEntries.findIndex((e) => e.card.sku === card.sku);
+      if (existingIdx >= 0) {
+        const current = newEntries[existingIdx];
+        const want = current.quantity + parsed.quantity;
+        const capped = Math.min(MAX_COPIES, want);
+        newEntries[existingIdx] = { ...current, quantity: capped };
+        added += capped - current.quantity;
+      } else {
+        const capped = Math.min(MAX_COPIES, parsed.quantity);
+        newEntries.push({ card, quantity: capped });
+        added += capped;
+      }
+    }
+
+    setLeader(newLeader);
+    setDeckEntries(newEntries);
+
+    if (added > 0) toast(`Imported ${added} card${added === 1 ? "" : "s"}`, "success");
+    return { added, notFound };
+  }
+
   function shareDeck() {
     const encoded = encodeDeck(leader, deckEntries);
     const url = `${window.location.origin}/deck-builder?deck=${encoded}`;
@@ -936,6 +997,17 @@ export default function DeckBuilderPage() {
                           <rect x="4" y="2" width="10" height="9" rx="1.5" />
                         </svg>
                       </button>
+                      <button
+                        onClick={() => setShowBulkImport(true)}
+                        className="p-1.5 text-neutral-400 hover:text-amber-400 transition rounded"
+                        title="Paste a decklist to import"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <path d="M8 2v9" />
+                          <path d="M4 7l4 4 4-4" />
+                          <path d="M2 13h12" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
 
@@ -1282,6 +1354,14 @@ export default function DeckBuilderPage() {
             quantity: e.quantity,
           }))}
           onClose={() => setShowSimulator(false)}
+        />
+      )}
+
+      {/* Bulk Import */}
+      {showBulkImport && (
+        <BulkImport
+          onClose={() => setShowBulkImport(false)}
+          onImport={handleBulkImport}
         />
       )}
     </div>
