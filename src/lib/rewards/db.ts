@@ -72,23 +72,32 @@ export async function enterRaffle(raffleId: string, userId: string, entries: num
   }
 
   const totalCost = raffle.entry_cost_points * entries;
-  const pointsResult = await spendPoints(userId, totalCost, "redeemed",
-    `${entries} raffle entry for "${raffle.title}" (${totalCost} Berries)`, raffleId);
 
-  if (!pointsResult.success) return { success: false, error: pointsResult.error };
-
-  // Upsert entry
-  const entryResult = await query(
-    `INSERT INTO raffle_entries (raffle_id, user_id, entry_count, points_spent)
-     VALUES ($1,$2,$3,$4)
-     ON CONFLICT (raffle_id, user_id) DO UPDATE SET entry_count=raffle_entries.entry_count+$3, points_spent=raffle_entries.points_spent+$4
-     RETURNING *`,
-    [raffleId, userId, entries, totalCost]
+  // Atomic-ish: refund the spend if the entry insert / counter update fails.
+  const { withCompensatingSpend } = await import("./atomic-spend");
+  const result = await withCompensatingSpend(
+    {
+      userId,
+      amount: totalCost,
+      type: "redeemed",
+      description: `${entries} raffle entry for "${raffle.title}" (${totalCost} Berries)`,
+      referenceId: raffleId,
+    },
+    async () => {
+      const entryResult = await query(
+        `INSERT INTO raffle_entries (raffle_id, user_id, entry_count, points_spent)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (raffle_id, user_id) DO UPDATE SET entry_count=raffle_entries.entry_count+$3, points_spent=raffle_entries.points_spent+$4
+         RETURNING *`,
+        [raffleId, userId, entries, totalCost]
+      );
+      await query(`UPDATE raffles SET total_entries=total_entries+$2, updated_at=NOW() WHERE id=$1`, [raffleId, entries]);
+      return entryResult.rows[0] as RaffleEntry;
+    },
   );
 
-  await query(`UPDATE raffles SET total_entries=total_entries+$2, updated_at=NOW() WHERE id=$1`, [raffleId, entries]);
-
-  return { success: true, entry: entryResult.rows[0] as RaffleEntry };
+  if (!result.success) return { success: false, error: result.error };
+  return { success: true, entry: result.result };
 }
 
 export async function drawRaffleWinner(raffleId: string): Promise<{ winner: RaffleEntry | null }> {
@@ -204,35 +213,52 @@ export async function openMysteryBox(boxId: string, userId: string): Promise<{
     return { success: false, error: "All boxes have been opened." };
   }
 
-  // Spend points
-  const pointsResult = await spendPoints(userId, box.cost_points, "redeemed",
-    `Opened mystery box "${box.title}" (${box.cost_points} Berries)`, boxId);
-  if (!pointsResult.success) return { success: false, error: pointsResult.error };
-
-  // Pick reward by probability (weighted random)
+  // Pre-flight: stock check happens before spend so we don't burn points
+  // for a box with nothing to award.
   const rewards = box.rewards || [];
   const available = rewards.filter(r => r.stock === null || r.awarded_count < (r.stock ?? Infinity));
   if (available.length === 0) return { success: false, error: "No rewards available." };
 
-  const totalProb = available.reduce((s, r) => s + parseFloat(r.probability), 0);
-  let roll = Math.random() * totalProb;
-  let selectedReward = available[0];
+  // Atomic-ish: spend → reward selection → open insert → count bumps.
+  // If any step fails, points refunded.
+  const { withCompensatingSpend } = await import("./atomic-spend");
+  const wrapped = await withCompensatingSpend(
+    {
+      userId,
+      amount: box.cost_points,
+      type: "redeemed",
+      description: `Opened mystery box "${box.title}" (${box.cost_points} Berries)`,
+      referenceId: boxId,
+    },
+    async () => {
+      // Pick reward by probability (weighted random)
+      const totalProb = available.reduce((s, r) => s + parseFloat(r.probability), 0);
+      let roll = Math.random() * totalProb;
+      let selectedReward = available[0];
+      for (const reward of available) {
+        roll -= parseFloat(reward.probability);
+        if (roll <= 0) { selectedReward = reward; break; }
+      }
 
-  for (const reward of available) {
-    roll -= parseFloat(reward.probability);
-    if (roll <= 0) { selectedReward = reward; break; }
-  }
+      // Record open
+      const openResult = await query(
+        `INSERT INTO mystery_box_opens (box_id, user_id, reward_id, points_spent)
+         VALUES ($1,$2,$3,$4) RETURNING *`,
+        [boxId, userId, selectedReward.id, box.cost_points]
+      );
 
-  // Record open
-  const openResult = await query(
-    `INSERT INTO mystery_box_opens (box_id, user_id, reward_id, points_spent)
-     VALUES ($1,$2,$3,$4) RETURNING *`,
-    [boxId, userId, selectedReward.id, box.cost_points]
+      // Update counts
+      await query(`UPDATE mystery_boxes SET total_opens=total_opens+1, updated_at=NOW() WHERE id=$1`, [boxId]);
+      await query(`UPDATE mystery_box_rewards SET awarded_count=awarded_count+1 WHERE id=$1`, [selectedReward.id]);
+
+      return { selectedReward, openRow: openResult.rows[0] };
+    },
   );
 
-  // Update counts
-  await query(`UPDATE mystery_boxes SET total_opens=total_opens+1, updated_at=NOW() WHERE id=$1`, [boxId]);
-  await query(`UPDATE mystery_box_rewards SET awarded_count=awarded_count+1 WHERE id=$1`, [selectedReward.id]);
+  if (!wrapped.success) return { success: false, error: wrapped.error };
+  const { selectedReward, openRow: openInsertedRow } = wrapped.result;
+  // Re-shape so the rest of the function uses the same names as before
+  const openResult = { rows: [openInsertedRow] };
 
   // Social: activity feed + legendary achievement
   postActivity(userId, "mystery_box_opened", "Opened a mystery box").catch(() => {});
