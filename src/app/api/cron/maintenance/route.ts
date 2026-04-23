@@ -11,6 +11,7 @@ import { runSellerRestockDigest, runBuyerWatchlistDigest } from "@/lib/market/di
 import { runLiquidityMining } from "@/lib/market/liquidity";
 import { runTradeinSweep } from "@/lib/tradein/sweep";
 import { runPriceHistoryTick } from "@/lib/portfolio/price-history";
+import { runAnnualSpendRecompute } from "@/lib/membership/spend-sweep";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -65,9 +66,11 @@ export async function GET(request: Request) {
     runTradeinSweep(),
     // Portfolio price-history sampler
     runPriceTick ? runPriceHistoryTick() : Promise.resolve(null),
+    // Annual spend recompute — self-gates to 02:00 UTC daily
+    runAnnualSpendRecompute(),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick, spendRecompute] = results;
 
   const status = {
     market: market.status,
@@ -122,6 +125,12 @@ export async function GET(request: Request) {
         : priceTick.status === "rejected"
           ? { status: "rejected" }
           : { status: "skipped" },
+    spendRecompute:
+      spendRecompute.status === "fulfilled"
+        ? (spendRecompute.value.ranInWindow
+            ? { status: "fulfilled", ...spendRecompute.value }
+            : { status: "skipped" })
+        : { status: "rejected" },
     durationMs: Date.now() - start,
   };
 
@@ -188,6 +197,13 @@ export async function GET(request: Request) {
     console.log(
       `[cron] tradein: expired ${tradeinSweep.value.expired} quote(s), ` +
       `${tradeinSweep.value.emailsSent} emails sent, ${tradeinSweep.value.emailsFailed} failed`
+    );
+  }
+  if (spendRecompute.status === "rejected") console.error("[cron] spend recompute failed:", spendRecompute.reason);
+  else if (spendRecompute.value.ranInWindow) {
+    console.log(
+      `[cron] spend recompute: ${spendRecompute.value.recomputed} users, ` +
+      `${spendRecompute.value.tierChanges} tier changes, ${spendRecompute.value.failures} failures`
     );
   }
 
