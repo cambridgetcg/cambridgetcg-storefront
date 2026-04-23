@@ -105,4 +105,30 @@ export interface CardOrderBook {
   best_ask: string | null;
 }
 
-export const COMMISSION_RATE = 0.08; // 8%
+// Base commission rate — used as the default and as the ceiling for every
+// tier below. Tiered rates reward high-trust sellers and are resolved at
+// match time from the seller's current trust score.
+export const COMMISSION_RATE = 0.08; // 8% — "New" / "Starter" tiers
+
+// Trust-tier commission overrides. Keyed by the tier name in TRUST_TIERS
+// (src/lib/escrow/types). Missing tiers fall back to COMMISSION_RATE.
+// Rates compound the reputation flywheel: higher trust = more retained
+// earnings = stickier sellers.
+export const COMMISSION_RATE_BY_TIER: Record<string, number> = {
+  New:     0.08,
+  Starter: 0.08,
+  Trusted: 0.07,  // 1% off
+  Veteran: 0.06,  // 2% off
+  Elite:   0.05,  // 3% off — meaningful on high-volume inventory
+};
+
+// Resolve a seller's commission rate from their trust score.
+export function commissionRateForScore(trustScore: number): number {
+  // Inline thresholds mirror TRUST_TIERS.minScore; kept here to avoid a
+  // market → escrow module dependency at data-layer time.
+  if (trustScore >= 95) return COMMISSION_RATE_BY_TIER.Elite;
+  if (trustScore >= 80) return COMMISSION_RATE_BY_TIER.Veteran;
+  if (trustScore >= 50) return COMMISSION_RATE_BY_TIER.Trusted;
+  if (trustScore >= 20) return COMMISSION_RATE_BY_TIER.Starter;
+  return COMMISSION_RATE_BY_TIER.New;
+}

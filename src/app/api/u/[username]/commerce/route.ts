@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { query } from "@/lib/db";
 import { TRUST_TIERS } from "@/lib/escrow/types";
+import { commissionRateForScore } from "@/lib/market/types";
 
 // GET — public commerce stats for a user profile.
 // Returns seller/buyer activity counts, volume, dispute rate, trust tier,
@@ -69,6 +70,10 @@ export async function GET(
     disputes,
     trustScore,
     trustTier: { name: tier.name, color: tier.color, minScore: tier.minScore },
+    // Commission rate the seller currently pays. Surfaced so buyers see
+    // the trust flywheel (elite sellers earn a lower effective rate) and
+    // so the seller can see what reputation has earned them.
+    commissionRate: commissionRateForScore(trustScore),
     memberSince: user.created_at,
   });
 }

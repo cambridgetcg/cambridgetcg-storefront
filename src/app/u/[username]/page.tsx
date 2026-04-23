@@ -60,6 +60,7 @@ export default function UserProfilePage() {
     disputes: number;
     trustScore: number;
     trustTier: { name: string; color: string; minScore: number };
+    commissionRate: number;
     memberSince: string;
   } | null>(null);
 
@@ -256,10 +257,17 @@ export default function UserProfilePage() {
                 </div>
               </div>
             </div>
-            <p className="text-[11px] text-neutral-500 mt-3">
-              Member since {new Date(commerce.memberSince).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}.
-              Trust tiers and escrow thresholds determine which trades need photo review or full inspection.
-            </p>
+            <div className="flex items-center justify-between flex-wrap gap-2 mt-3 pt-3 border-t border-neutral-800">
+              <p className="text-[11px] text-neutral-500">
+                Member since {new Date(commerce.memberSince).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}
+              </p>
+              <p className="text-[11px] text-neutral-500">
+                Current commission rate: <span className="font-mono text-emerald-400">{(commerce.commissionRate * 100).toFixed(0)}%</span>
+                {commerce.commissionRate < 0.08 && (
+                  <span className="text-amber-400 ml-1">&middot; earned by reputation</span>
+                )}
+              </p>
+            </div>
           </section>
         )}
 

@@ -1,6 +1,6 @@
 import { query } from "@/lib/db";
 import type { MarketOrder, MarketTrade, OrderBookEntry, OrderBookSummary, CardOrderBook } from "./types";
-import { COMMISSION_RATE } from "./types";
+import { COMMISSION_RATE, commissionRateForScore } from "./types";
 import { postActivity, awardAchievement } from "@/lib/social/db";
 import { routeTrade } from "@/lib/escrow/service-tiers";
 import { sendBuyerMatchEmail, sendSellerMatchEmail, sendCancelEmail } from "./email";
@@ -165,8 +165,6 @@ export async function placeOrder(data: {
       // Trade executes at the resting order's price (maker price)
       const tradePrice = parseFloat(match.price);
       const tradeValue = tradePrice * fillQty;
-      const commission = Math.round(tradeValue * COMMISSION_RATE * 100) / 100;
-      const sellerPayout = tradeValue - commission;
 
       const buyerId = data.side === "bid" ? data.userId : match.user_id;
       const sellerId = data.side === "ask" ? data.userId : match.user_id;
@@ -179,6 +177,14 @@ export async function placeOrder(data: {
       const buyerTrust  = buyerId  === data.userId ? takerTrust : (match.maker_trust ?? 0);
       const sellerFlag  = sellerId === data.userId ? takerFlagged : !!match.maker_flagged;
       const buyerFlag   = buyerId  === data.userId ? takerFlagged : !!match.maker_flagged;
+
+      // Tiered commission: higher-trust sellers keep more of each sale.
+      // This is the reputation flywheel — reputation earned lowers the
+      // marginal cost of the next sale, making trust self-reinforcing.
+      const sellerCommissionRate = commissionRateForScore(sellerTrust);
+      const commission = Math.round(tradeValue * sellerCommissionRate * 100) / 100;
+      const sellerPayout = tradeValue - commission;
+
       const routing = await routeTrade({
         tradeValue,
         sellerTrustScore: sellerTrust,
@@ -200,7 +206,7 @@ export async function placeOrder(data: {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
          RETURNING *`,
         [bidOrderId, askOrderId, buyerId, sellerId, data.sku,
-         tradePrice.toFixed(2), fillQty, COMMISSION_RATE.toFixed(4),
+         tradePrice.toFixed(2), fillQty, sellerCommissionRate.toFixed(4),
          commission.toFixed(2), sellerPayout.toFixed(2),
          routing.tier, routing.requiresPhotos, routing.requiresInspection,
          routing.sellerShipsTo, routing.disputeWindowHours, routing.payoutHoldDays,
