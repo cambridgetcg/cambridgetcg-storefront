@@ -12,6 +12,7 @@ import { runLiquidityMining } from "@/lib/market/liquidity";
 import { runTradeinSweep } from "@/lib/tradein/sweep";
 import { runPriceHistoryTick } from "@/lib/portfolio/price-history";
 import { runAnnualSpendRecompute } from "@/lib/membership/spend-sweep";
+import { runSubscriptionExpirySweep } from "@/lib/membership/subscription-sweep";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -68,9 +69,11 @@ export async function GET(request: Request) {
     runPriceTick ? runPriceHistoryTick() : Promise.resolve(null),
     // Annual spend recompute — self-gates to 02:00 UTC daily
     runAnnualSpendRecompute(),
+    // Subscription expiry catch-up sweep
+    runSubscriptionExpirySweep(),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick, spendRecompute] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick, spendRecompute, subSweep] = results;
 
   const status = {
     market: market.status,
@@ -130,6 +133,10 @@ export async function GET(request: Request) {
         ? (spendRecompute.value.ranInWindow
             ? { status: "fulfilled", ...spendRecompute.value }
             : { status: "skipped" })
+        : { status: "rejected" },
+    subSweep:
+      subSweep.status === "fulfilled"
+        ? { status: "fulfilled", ...subSweep.value }
         : { status: "rejected" },
     durationMs: Date.now() - start,
   };
@@ -204,6 +211,13 @@ export async function GET(request: Request) {
     console.log(
       `[cron] spend recompute: ${spendRecompute.value.recomputed} users, ` +
       `${spendRecompute.value.tierChanges} tier changes, ${spendRecompute.value.failures} failures`
+    );
+  }
+  if (subSweep.status === "rejected") console.error("[cron] subscription sweep failed:", subSweep.reason);
+  else if (subSweep.value.expired > 0) {
+    console.log(
+      `[cron] subscriptions: ${subSweep.value.expired} expired, ` +
+      `${subSweep.value.recalculated} tiers recalculated, ${subSweep.value.failures} failures`
     );
   }
 

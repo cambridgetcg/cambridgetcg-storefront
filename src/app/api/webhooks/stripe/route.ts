@@ -27,6 +27,81 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
+  // Subscription renewal — fires monthly/annually when Stripe collects the
+  // recurring charge for a Platinum subscriber. Extends subscription_expires_at
+  // so recalculateTier() keeps the user on Platinum.
+  if (event.type === "invoice.payment_succeeded") {
+    try {
+      const invoice = event.data.object as Stripe.Invoice & { subscription?: string };
+      const subId =
+        typeof invoice.subscription === "string"
+          ? invoice.subscription
+          : invoice.subscription
+            ? (invoice.subscription as { id?: string }).id ?? null
+            : null;
+      // Skip the first invoice — that's the initial checkout; the
+      // checkout.session.completed handler already stamped expires_at.
+      // Renewal invoices have billing_reason='subscription_cycle'.
+      if (subId && invoice.billing_reason === "subscription_cycle") {
+        // Period covered by this invoice tells us the new expiry. Stripe
+        // gives us period_end on the line item.
+        const periodEnd = invoice.lines.data[0]?.period?.end;
+        if (periodEnd) {
+          await query(
+            `UPDATE users
+                SET subscription_expires_at = to_timestamp($2),
+                    subscription_status = 'active',
+                    tier_calculated_at = NOW(),
+                    updated_at = NOW()
+              WHERE subscription_stripe_id = $1`,
+            [subId, periodEnd]
+          );
+          // Recalc tier to honour the freshly extended subscription
+          const u = await query(
+            `SELECT id FROM users WHERE subscription_stripe_id = $1`,
+            [subId]
+          );
+          if (u.rows[0]) {
+            const { recalculateTier } = await import("@/lib/membership/db");
+            await recalculateTier(u.rows[0].id).catch(() => {});
+          }
+          console.log(`[webhook] Platinum renewal: subscription ${subId} extended`);
+        }
+      }
+    } catch (err) {
+      console.error("[webhook] invoice.payment_succeeded error:", err);
+    }
+    return NextResponse.json({ received: true });
+  }
+
+  // Subscription cancelled / lapsed — flip status, let recalculateTier drop
+  // the user to their best spending-based tier on next profile fetch.
+  if (event.type === "customer.subscription.deleted") {
+    try {
+      const sub = event.data.object as Stripe.Subscription;
+      await query(
+        `UPDATE users
+            SET subscription_status = 'cancelled',
+                tier_calculated_at = NOW(),
+                updated_at = NOW()
+          WHERE subscription_stripe_id = $1`,
+        [sub.id]
+      );
+      const u = await query(
+        `SELECT id FROM users WHERE subscription_stripe_id = $1`,
+        [sub.id]
+      );
+      if (u.rows[0]) {
+        const { recalculateTier } = await import("@/lib/membership/db");
+        await recalculateTier(u.rows[0].id).catch(() => {});
+      }
+      console.log(`[webhook] Platinum subscription ${sub.id} cancelled`);
+    } catch (err) {
+      console.error("[webhook] subscription.deleted error:", err);
+    }
+    return NextResponse.json({ received: true });
+  }
+
   // Stripe Connect: keep the local account state in sync with Stripe's view.
   // Fires when a seller completes onboarding, has a requirement come due,
   // or gets restricted/disabled.
