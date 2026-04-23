@@ -858,7 +858,19 @@ export default function CardMarketPage() {
 
           {/* Center: Order book */}
           <div className="bg-neutral-900 rounded-xl p-4">
-            <h2 className="text-sm font-bold text-white mb-1">Order Book</h2>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-sm font-bold text-white">Order Book</h2>
+              {book.demand_pressure && book.demand_pressure.pressure > 0 && (
+                <span
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30"
+                  title={`${book.demand_pressure.watchCount} watchers, ${book.demand_pressure.alertCount} alerts, ${book.demand_pressure.askDepth} asks available`}
+                >
+                  🔥 Demand pressure{book.demand_pressure.tightenPct > 0
+                    ? ` · CTCG tightened ${(book.demand_pressure.tightenPct * 100).toFixed(1)}%`
+                    : ""}
+                </span>
+              )}
+            </div>
 
             {/* Spread indicator */}
             <div className="flex items-center gap-3 mb-4 text-xs">
