@@ -451,7 +451,7 @@ export default function AdventureModePage() {
                         <div className="flex items-center gap-2 text-sm">
                           <span className="text-amber-400">&#11088;</span>
                           <span className="text-neutral-300">
-                            First clear: {level.first_clear_points} pts
+                            First clear: {level.first_clear_points} Berries
                             {level.first_clear_credit > 0 && (
                               <span className="text-green-400 ml-1">
                                 + &pound;{Number(level.first_clear_credit).toFixed(2)} store credit
@@ -465,7 +465,7 @@ export default function AdventureModePage() {
                         <div className="flex items-center gap-2 text-sm">
                           <span className="text-neutral-500">&#128260;</span>
                           <span className="text-neutral-400">
-                            Repeat: {level.repeat_points} pts
+                            Repeat: {level.repeat_points} Berries
                           </span>
                         </div>
                       </div>

@@ -1036,7 +1036,7 @@ export default function PVEGameBoard() {
               )}
               <div className="flex items-center justify-center gap-2 text-lg">
                 <span>&#11088;</span>
-                <span className="text-amber-400 font-bold">+{victoryResult.pointsEarned} points</span>
+                <span className="text-amber-400 font-bold">+{victoryResult.pointsEarned} Berries</span>
               </div>
               {victoryResult.creditEarned > 0 && (
                 <div className="flex items-center justify-center gap-2 text-lg">

@@ -6,7 +6,16 @@ import { applyAction } from "@/lib/game/reducer";
 import { aiTurn, generateAIDeck } from "@/lib/game/ai";
 import { earnPoints, addCredit } from "@/lib/membership/db";
 import { postActivity } from "@/lib/social/db";
+import { grantPullToken, type PullTier } from "@/lib/bounty/db";
 import type { GameState } from "@/lib/game/types";
+
+// First-clear milestone map: L3 → Uncommon Pull, L6 → Rare, L10 → Super Rare.
+// Adjust in one place if the tier ladder changes.
+const MILESTONE_PULLS: Record<number, PullTier> = {
+  3: "uncommon",
+  6: "rare",
+  10: "super_rare",
+};
 
 // In PVE the human is always player1 and the AI is always player2.
 // Keep this assumption in one place.
@@ -272,11 +281,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ lev
       `Defeated ${level.opponent_name} in ${level.title}!`,
     ).catch(() => {});
 
+    // Bounty Board milestone pulls — only on first clear of milestone levels.
+    let milestonePull: PullTier | null = null;
+    if (isFirstClear && MILESTONE_PULLS[level.level_number]) {
+      milestonePull = MILESTONE_PULLS[level.level_number];
+      await grantPullToken(session.user.id, milestonePull, 1);
+    }
+
     return NextResponse.json({
       victory: true,
       firstClear: isFirstClear,
       pointsEarned: points,
       creditEarned: credit,
+      pullTokenEarned: milestonePull,
       level: level.level_number,
       nextLevel: level.level_number + 1,
     });

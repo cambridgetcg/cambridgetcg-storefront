@@ -301,7 +301,7 @@ export default function MembershipPage() {
                 "0% auction fees",
                 "12% off all purchases",
                 "8% cashback",
-                "3x points",
+                "3x Berries",
                 "Priority everything",
               ].map(perk => (
                 <div key={perk} className="flex items-center gap-2 text-sm text-neutral-300">
@@ -374,7 +374,7 @@ export default function MembershipPage() {
             highlight={profile.perks.cashback_percent > 0}
           />
           <PerkCard
-            label="Points"
+            label="Berries"
             value={`${profile.perks.points_multiplier}x`}
             description="points multiplier"
             highlight={profile.perks.points_multiplier > 1}
@@ -425,10 +425,10 @@ export default function MembershipPage() {
 
       {/* ── 3. POINTS & CREDIT ─────────────────────────────────────────────── */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Points */}
+        {/* Berries */}
         <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-5">
           <div className="flex items-baseline justify-between mb-4">
-            <h3 className="text-base font-semibold text-white">Points</h3>
+            <h3 className="text-base font-semibold text-white">Berries</h3>
             <span className="text-2xl font-bold text-amber-400">{profile.points_balance.toLocaleString()}</span>
           </div>
           <p className="text-xs text-neutral-500 mb-4">
@@ -455,7 +455,7 @@ export default function MembershipPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-neutral-600">No points activity yet.</p>
+            <p className="text-sm text-neutral-600">No Berries activity yet.</p>
           )}
 
           {pointsHistory.length > 5 && (
@@ -556,7 +556,7 @@ export default function MembershipPage() {
 
                   <div className="space-y-2 mb-4">
                     <TierStat label="Cashback" value={`${parseFloat(t.cashback_percent)}%`} />
-                    <TierStat label="Points" value={`${parseFloat(t.points_multiplier)}x`} />
+                    <TierStat label="Berries" value={`${parseFloat(t.points_multiplier)}x`} />
                     <TierStat
                       label="P2P commission"
                       value={`${(parseFloat(t.p2p_commission_rate) * 100).toFixed(0)}%`}
