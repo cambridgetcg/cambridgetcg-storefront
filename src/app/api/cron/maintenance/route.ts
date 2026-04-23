@@ -52,9 +52,11 @@ export async function GET(request: Request) {
     runSellerRestockDigest(),
     runBuyerWatchlistDigest(),
     runDigest ? sendAdminWeeklyDigest() : Promise.resolve(null),
+    // Liquidity mining — idempotent per (order, UTC day), safe every minute
+    runLiquidityMining(),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity] = results;
 
   const status = {
     market: market.status,
@@ -95,6 +97,10 @@ export async function GET(request: Request) {
         : adminDigest.status === "rejected"
           ? { status: "rejected" }
           : { status: "skipped" },
+    liquidity:
+      liquidity.status === "fulfilled"
+        ? { status: "fulfilled", ...liquidity.value }
+        : { status: "rejected" },
     durationMs: Date.now() - start,
   };
 
@@ -147,6 +153,13 @@ export async function GET(request: Request) {
     console.log(
       `[cron] streak sweep: ${streakSweep.value.atRiskCount} at-risk, ` +
       `${streakSweep.value.queuedCount} queued, ${streakSweep.value.errors} errors`,
+    );
+  }
+  if (liquidity.status === "rejected") console.error("[cron] liquidity mining failed:", liquidity.reason);
+  else if (liquidity.value.awards > 0) {
+    console.log(
+      `[cron] liquidity: ${liquidity.value.awards} awards, £${liquidity.value.amountGbp.toFixed(2)} credit` +
+      (liquidity.value.throttled ? " (throttled)" : "")
     );
   }
 

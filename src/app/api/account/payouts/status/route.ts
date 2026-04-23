@@ -59,12 +59,25 @@ export async function GET() {
   const totalOwed = [...tradeRows, ...auctionRows]
     .reduce((s, r) => s + parseFloat(r.amount), 0);
 
+  // Liquidity rewards earned to date — store-credit bonuses from resting asks
+  const liquidity = await query(
+    `SELECT COUNT(*)::int AS award_count,
+            COALESCE(SUM(amount_gbp::numeric), 0)::numeric AS total
+       FROM liquidity_rewards WHERE user_id = $1`,
+    [userId]
+  );
+  const liqRow = liquidity.rows[0];
+
   return NextResponse.json({
     status,
     pending: {
       trades: tradeRows,
       auctions: auctionRows,
       totalOwedFormatted: formatPrice(totalOwed),
+    },
+    liquidity: {
+      awardCount: liqRow?.award_count ?? 0,
+      totalFormatted: formatPrice(parseFloat(liqRow?.total ?? "0")),
     },
   });
 }

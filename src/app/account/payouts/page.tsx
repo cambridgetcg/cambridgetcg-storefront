@@ -50,6 +50,7 @@ export default function PayoutsPage() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<PayoutStatus | null>(null);
   const [pending, setPending] = useState<{ trades: PendingPayout[]; auctions: PendingPayout[]; totalOwedFormatted: string } | null>(null);
+  const [liquidity, setLiquidity] = useState<{ awardCount: number; totalFormatted: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [onboarding, setOnboarding] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -77,6 +78,7 @@ export default function PayoutsPage() {
       const data = await res.json();
       setStatus(data.status);
       setPending(data.pending);
+      setLiquidity(data.liquidity ?? null);
     } finally {
       setLoading(false);
     }
@@ -269,6 +271,21 @@ export default function PayoutsPage() {
 
       {pending && pending.trades.length === 0 && pending.auctions.length === 0 && (
         <p className="text-sm text-neutral-500">No pending payouts.</p>
+      )}
+
+      {liquidity && liquidity.awardCount > 0 && (
+        <div className="mt-6 bg-neutral-900 rounded-xl p-5 border border-purple-500/20">
+          <div className="flex items-baseline justify-between mb-1">
+            <h2 className="text-sm font-bold text-purple-400 uppercase tracking-wide">
+              Liquidity rewards
+            </h2>
+            <span className="text-purple-400 font-mono font-bold">{liquidity.totalFormatted}</span>
+          </div>
+          <p className="text-xs text-neutral-500">
+            {liquidity.awardCount} rewards earned for keeping tight, resting asks. Paid as store credit &middot;
+            appears in your account credit balance.
+          </p>
+        </div>
       )}
     </div>
   );
