@@ -208,3 +208,86 @@ function escapeHtml(text: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }
+
+// ── Lifecycle status emails ──
+//
+// One template per transition the customer cares about. Internal-only
+// transitions (admin notes, grading micro-steps) don't get emails — only
+// the visible milestones below.
+const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://cambridgetcg.com").trim().replace(/\/+$/, "");
+
+function statusTpl(heading: string, body: string, ctaText: string, ctaUrl: string): string {
+  return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:480px;margin:40px auto;padding:32px;background:#171717;border-radius:16px;">
+    <h1 style="color:#fff;font-size:20px;margin:0 0 8px;">Cambridge <span style="color:#34d399;">TCG</span></h1>
+    <h2 style="color:#fff;font-size:16px;margin:0 0 16px;">${heading}</h2>
+    <div style="color:#a3a3a3;font-size:14px;line-height:1.6;">${body}</div>
+    <a href="${ctaUrl}" style="display:inline-block;padding:12px 32px;background:#f59e0b;color:#000;font-weight:700;text-decoration:none;border-radius:8px;font-size:14px;margin-top:16px;">${ctaText}</a>
+    <p style="color:#525252;font-size:12px;margin:24px 0 0;">Cambridge TCG &mdash; Trade-Ins</p>
+  </div>
+</body></html>`;
+}
+
+async function sendOne(to: string, subject: string, html: string, text: string) {
+  await ses.send(new SendEmailCommand({
+    Source: FROM_EMAIL,
+    Destination: { ToAddresses: [to] },
+    Message: { Subject: { Data: subject }, Body: { Text: { Data: text }, Html: { Data: html } } },
+  }));
+}
+
+const STATUS_COPY: Record<string, { subject: (ref: string) => string; heading: string; body: (ref: string) => string }> = {
+  received: {
+    subject: (ref) => `Received: trade-in ${ref}`,
+    heading: "We've received your cards",
+    body: (ref) => `Your trade-in <strong>${ref}</strong> arrived at Cambridge TCG. Our team will inspect each card next.`,
+  },
+  grading: {
+    subject: (ref) => `Inspection started: ${ref}`,
+    heading: "Inspection in progress",
+    body: (ref) => `We're going through trade-in <strong>${ref}</strong> card by card. You'll hear from us when grading is complete.`,
+  },
+  approved: {
+    subject: (ref) => `Approved: ${ref}`,
+    heading: "Inspection complete",
+    body: (ref) => `Trade-in <strong>${ref}</strong> has been approved. Payment is being processed and you'll receive a final confirmation shortly.`,
+  },
+  paid: {
+    subject: (ref) => `Paid: trade-in ${ref}`,
+    heading: "Payment sent",
+    body: (ref) => `Your trade-in <strong>${ref}</strong> has been paid out. If your payout includes store credit, it's now in your account balance. Cash payouts will land in your bank within 1&ndash;3 business days.`,
+  },
+  rejected: {
+    subject: (ref) => `Trade-in rejected: ${ref}`,
+    heading: "Trade-in not accepted",
+    body: (ref) => `We weren't able to accept trade-in <strong>${ref}</strong>. Reach out via the contact page if you'd like more detail.`,
+  },
+  cancelled: {
+    subject: (ref) => `Trade-in cancelled: ${ref}`,
+    heading: "Trade-in cancelled",
+    body: (ref) => `Trade-in <strong>${ref}</strong> has been cancelled.`,
+  },
+  expired: {
+    subject: (ref) => `Quote expired: ${ref}`,
+    heading: "Your quote expired",
+    body: (ref) => `The quote on trade-in <strong>${ref}</strong> wasn't accepted within 24 hours and has expired. Re-submit if you'd still like to sell those cards.`,
+  },
+};
+
+export async function sendTradeinStatusEmail(d: {
+  email: string;
+  reference: string;
+  status: string;
+}): Promise<void> {
+  const copy = STATUS_COPY[d.status];
+  if (!copy) return;
+  const url = `${SITE}/trade-in/confirm/${d.reference}`;
+  const subject = copy.subject(d.reference);
+  const text = `${copy.heading} — trade-in ${d.reference}. View: ${url}`;
+  const html = statusTpl(copy.heading, copy.body(d.reference), "View trade-in", url);
+  try {
+    await sendOne(d.email, subject, html, text);
+  } catch (err) {
+    console.error(`[tradein] status email (${d.status}) to ${d.email} failed:`, err);
+  }
+}

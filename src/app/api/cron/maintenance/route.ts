@@ -9,6 +9,7 @@ import { runStreakAtRiskSweep } from "@/lib/email/streak-sweep";
 import { sendAdminWeeklyDigest } from "@/lib/email/admin-digest";
 import { runSellerRestockDigest, runBuyerWatchlistDigest } from "@/lib/market/digests";
 import { runLiquidityMining } from "@/lib/market/liquidity";
+import { runTradeinSweep } from "@/lib/tradein/sweep";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -54,9 +55,11 @@ export async function GET(request: Request) {
     runDigest ? sendAdminWeeklyDigest() : Promise.resolve(null),
     // Liquidity mining — idempotent per (order, UTC day), safe every minute
     runLiquidityMining(),
+    // Trade-in: expire quotes past their 24h response window + email
+    runTradeinSweep(),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep] = results;
 
   const status = {
     market: market.status,
@@ -100,6 +103,10 @@ export async function GET(request: Request) {
     liquidity:
       liquidity.status === "fulfilled"
         ? { status: "fulfilled", ...liquidity.value }
+        : { status: "rejected" },
+    tradeinSweep:
+      tradeinSweep.status === "fulfilled"
+        ? { status: "fulfilled", ...tradeinSweep.value }
         : { status: "rejected" },
     durationMs: Date.now() - start,
   };
@@ -160,6 +167,13 @@ export async function GET(request: Request) {
     console.log(
       `[cron] liquidity: ${liquidity.value.awards} awards, £${liquidity.value.amountGbp.toFixed(2)} credit` +
       (liquidity.value.throttled ? " (throttled)" : "")
+    );
+  }
+  if (tradeinSweep.status === "rejected") console.error("[cron] tradein sweep failed:", tradeinSweep.reason);
+  else if (tradeinSweep.value.expired > 0) {
+    console.log(
+      `[cron] tradein: expired ${tradeinSweep.value.expired} quote(s), ` +
+      `${tradeinSweep.value.emailsSent} emails sent, ${tradeinSweep.value.emailsFailed} failed`
     );
   }
 

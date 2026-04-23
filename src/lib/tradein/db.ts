@@ -256,6 +256,23 @@ export async function getSubmissionByRef(
   return { submission, items: itemsResult.rows as ItemRow[] };
 }
 
+// ── Quote expiry sweep ──
+//
+// Cron entry point. Transitions submissions whose quote_expires_at has
+// elapsed without a customer response from 'quoted' → 'expired'.
+// Returns affected references so the caller can fan out emails.
+export async function sweepExpiredQuotes(): Promise<{ expired: Array<{ reference: string; customer_email: string }> }> {
+  const r = await query(
+    `UPDATE tradein_submissions
+        SET status = 'expired', updated_at = NOW()
+      WHERE status = 'quoted'
+        AND quote_expires_at IS NOT NULL
+        AND quote_expires_at <= NOW()
+      RETURNING reference, customer_email`
+  );
+  return { expired: r.rows };
+}
+
 // ── Credit issuance on paid trade-ins ──
 //
 // Called whenever a submission transitions to status='paid'. Idempotent

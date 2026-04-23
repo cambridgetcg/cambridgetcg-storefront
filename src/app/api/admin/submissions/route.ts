@@ -5,6 +5,7 @@ import {
   updateSubmissionStatus,
   issueTradeinCreditIfDue,
 } from "@/lib/tradein/db";
+import { sendTradeinStatusEmail } from "@/lib/tradein/email";
 
 export async function GET() {
   if (!(await isAdmin())) {
@@ -50,6 +51,17 @@ export async function PATCH(request: Request) {
         console.error("[admin] Trade-in credit issuance failed:", err);
         creditResult = { ok: false, reason: "credit issuance threw" };
       }
+    }
+
+    // Customer-facing email for visible milestones — fire-and-forget.
+    // sendTradeinStatusEmail filters internally on supported statuses,
+    // so unknown ones just no-op.
+    if (updated.customer_email) {
+      sendTradeinStatusEmail({
+        email: updated.customer_email,
+        reference: updated.reference,
+        status,
+      }).catch((err) => console.error("[admin] status email failed:", err));
     }
 
     return NextResponse.json({ submission: updated, credit: creditResult });
