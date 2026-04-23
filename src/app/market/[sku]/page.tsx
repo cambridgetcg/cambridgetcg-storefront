@@ -173,6 +173,75 @@ function formatTime(iso: string) {
     d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
+/** Inline SVG sparkline — no chart lib, no deps.
+ *  Height 28px, width scales to container. Stroke colour follows the
+ *  overall trend (last point vs first) so the glyph is self-describing. */
+function Sparkline({ points, width = 120, height = 28 }: {
+  points: number[]; width?: number; height?: number;
+}) {
+  if (!points.length) return null;
+  if (points.length === 1) {
+    return (
+      <svg width={width} height={height} className="block">
+        <line x1={0} y1={height / 2} x2={width} y2={height / 2} stroke="#737373" strokeWidth={1} />
+      </svg>
+    );
+  }
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  const stepX = width / (points.length - 1);
+  const path = points
+    .map((p, i) => {
+      const x = i * stepX;
+      const y = height - ((p - min) / range) * (height - 4) - 2;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const trendUp = points[points.length - 1] >= points[0];
+  const stroke = trendUp ? "#34d399" : "#f87171";
+  return (
+    <svg width={width} height={height} className="block" aria-hidden="true">
+      <path d={path} fill="none" stroke={stroke} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Price history tile — sparkline + 24h change pill. */
+function PriceHistoryTile({ analytics }: {
+  analytics: { sparkline: number[]; lastPrice: number | null; change24hPct: number | null };
+}) {
+  const { sparkline, lastPrice, change24hPct } = analytics;
+  if (!sparkline?.length || lastPrice === null) {
+    return (
+      <div className="bg-neutral-900/60 border border-neutral-800 rounded-lg p-3 mb-4">
+        <span className="text-xs text-neutral-500">No trade history yet.</span>
+      </div>
+    );
+  }
+  const changeColor =
+    change24hPct === null ? "text-neutral-500" :
+    change24hPct > 0 ? "text-emerald-400" :
+    change24hPct < 0 ? "text-red-400" : "text-neutral-400";
+  const changeSign = change24hPct === null ? "" : change24hPct > 0 ? "+" : "";
+  return (
+    <div className="bg-neutral-900/60 border border-neutral-800 rounded-lg p-3 mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] text-neutral-500 uppercase tracking-wide">30-day price</span>
+        {change24hPct !== null && (
+          <span className={`text-xs font-mono ${changeColor}`}>
+            {changeSign}{change24hPct.toFixed(1)}% 24h
+          </span>
+        )}
+      </div>
+      <Sparkline points={sparkline} width={200} height={32} />
+      <p className="text-[10px] text-neutral-500 mt-1">
+        {sparkline.length} day{sparkline.length !== 1 ? "s" : ""} of trades
+      </p>
+    </div>
+  );
+}
+
 /** Spot price + market price info panel */
 function SpotPricePanel({ view }: { view: UnifiedMarketView }) {
   const { spot_price, spot_stock, market_price, p2p_discount, tradein_credit, tradein_cash } = view;
@@ -377,6 +446,11 @@ export default function CardMarketPage() {
   const sku = params.sku as string;
 
   const [book, setBook] = useState<UnifiedMarketView | null>(null);
+  const [analytics, setAnalytics] = useState<{
+    sparkline: number[];
+    lastPrice: number | null;
+    change24hPct: number | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -417,6 +491,14 @@ export default function CardMarketPage() {
     pollRef.current = setInterval(fetchBook, 10000);
     return () => clearInterval(pollRef.current);
   }, [fetchBook]);
+
+  // Analytics fetched once per SKU — trades are infrequent, no need to poll.
+  useEffect(() => {
+    fetch(`/api/market/${sku}/candles?interval=1d&limit=30`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setAnalytics({ sparkline: d.sparkline, lastPrice: d.lastPrice, change24hPct: d.change24hPct }); })
+      .catch(() => {});
+  }, [sku]);
 
   useEffect(() => {
     fetch("/api/auth/session")
@@ -568,6 +650,7 @@ export default function CardMarketPage() {
             {/* Spot price panel below card image */}
             <div className="mt-4">
               <SpotPricePanel view={book} />
+              {analytics && <PriceHistoryTile analytics={analytics} />}
             </div>
           </div>
 
