@@ -133,12 +133,17 @@ export async function placeOrder(data: {
     const priceOp = data.side === "bid" ? "<=" : ">=";
     const priceOrder = data.side === "bid" ? "ASC" : "DESC";
 
+    // JOIN trust + membership tier in one query so commission is resolvable
+    // in-memory inside the match loop (no per-iteration round trip).
     const matchResult = await client.query(
-      `SELECT o.*, u.trust_score AS maker_trust,
-              COALESCE(tp.is_flagged, false) AS maker_flagged
+      `SELECT o.*,
+              u.trust_score                          AS maker_trust,
+              COALESCE(tp.is_flagged, false)         AS maker_flagged,
+              t.p2p_commission_rate                  AS maker_p2p_rate
          FROM market_orders o
          JOIN users u ON u.id = o.user_id
          LEFT JOIN trust_profiles tp ON tp.user_id = o.user_id
+         LEFT JOIN tiers          t  ON t.id        = u.tier_id
         WHERE o.sku = $1 AND o.side = $2
           AND o.status IN ('open', 'partially_filled')
           AND o.condition = $3 AND o.price ${priceOp} $4 AND o.user_id != $5
@@ -147,15 +152,22 @@ export async function placeOrder(data: {
       [data.sku, oppositeSide, data.condition, data.price.toFixed(2), data.userId]
     );
 
-    // Taker's trust (one lookup, reused per match)
-    const takerTrustRow = await client.query(
-      `SELECT u.trust_score, COALESCE(tp.is_flagged, false) AS is_flagged
-         FROM users u LEFT JOIN trust_profiles tp ON tp.user_id = u.id
+    // Taker's trust + tier (one lookup, reused per match)
+    const takerInfoRow = await client.query(
+      `SELECT u.trust_score,
+              COALESCE(tp.is_flagged, false) AS is_flagged,
+              t.p2p_commission_rate          AS p2p_rate
+         FROM users u
+         LEFT JOIN trust_profiles tp ON tp.user_id = u.id
+         LEFT JOIN tiers          t  ON t.id       = u.tier_id
         WHERE u.id = $1`,
       [data.userId]
     );
-    const takerTrust = takerTrustRow.rows[0]?.trust_score ?? 0;
-    const takerFlagged = takerTrustRow.rows[0]?.is_flagged ?? false;
+    const takerTrust = takerInfoRow.rows[0]?.trust_score ?? 0;
+    const takerFlagged = takerInfoRow.rows[0]?.is_flagged ?? false;
+    const takerTierP2pRate = takerInfoRow.rows[0]?.p2p_rate
+      ? parseFloat(takerInfoRow.rows[0].p2p_rate)
+      : null;
 
     for (const match of matchResult.rows) {
       if (remainingQty <= 0) break;
@@ -178,10 +190,18 @@ export async function placeOrder(data: {
       const sellerFlag  = sellerId === data.userId ? takerFlagged : !!match.maker_flagged;
       const buyerFlag   = buyerId  === data.userId ? takerFlagged : !!match.maker_flagged;
 
-      // Tiered commission: higher-trust sellers keep more of each sale.
-      // This is the reputation flywheel — reputation earned lowers the
-      // marginal cost of the next sale, making trust self-reinforcing.
-      const sellerCommissionRate = commissionRateForScore(sellerTrust);
+      // Resolve commission from BOTH membership tier and trust score; take
+      // whichever is more favourable to the seller. Reputation earned via
+      // trades AND membership earned via Platinum/spending both lower the
+      // rate without one cancelling the other.
+      const sellerIsTaker = sellerId === data.userId;
+      const sellerTierRate = sellerIsTaker ? takerTierP2pRate
+        : (match.maker_p2p_rate ? parseFloat(match.maker_p2p_rate) : null);
+      const trustRate = commissionRateForScore(sellerTrust);
+      const sellerCommissionRate =
+        sellerTierRate !== null && sellerTierRate < trustRate
+          ? sellerTierRate
+          : trustRate;
       const commission = Math.round(tradeValue * sellerCommissionRate * 100) / 100;
       const sellerPayout = tradeValue - commission;
 

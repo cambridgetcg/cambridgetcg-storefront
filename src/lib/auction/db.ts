@@ -678,17 +678,30 @@ export async function rejectOffer(auctionId: string, bidId: string): Promise<boo
 }
 
 export async function calculateSellerPayout(auctionId: string): Promise<{ payout: number; commission: number } | null> {
-  const result = await query(`SELECT * FROM auctions WHERE id = $1`, [auctionId]);
+  // JOIN seller's current tier so a tier upgrade between auction creation
+  // and payout retroactively reduces commission. Stored seller_commission_rate
+  // is the floor: min(stored, current tier rate). Tier downgrades never
+  // increase the rate.
+  const result = await query(
+    `SELECT a.*, t.auction_commission_rate AS tier_rate
+       FROM auctions a
+       LEFT JOIN users u ON u.id = a.seller_user_id
+       LEFT JOIN tiers t ON t.id = u.tier_id
+      WHERE a.id = $1`,
+    [auctionId]
+  );
   if (result.rows.length === 0) return null;
   const auction = result.rows[0];
   const salePrice = parseFloat(auction.current_price);
-  const rate = parseFloat(auction.seller_commission_rate || "0.12");
+  const storedRate = parseFloat(auction.seller_commission_rate || "0.12");
+  const tierRate = auction.tier_rate ? parseFloat(auction.tier_rate) : null;
+  const rate = tierRate !== null && tierRate < storedRate ? tierRate : storedRate;
   const commission = Math.round(salePrice * rate * 100) / 100;
   const payout = salePrice - commission;
 
   await query(
-    `UPDATE auctions SET seller_payout = $1, updated_at = NOW() WHERE id = $2`,
-    [payout.toFixed(2), auctionId]
+    `UPDATE auctions SET seller_payout = $1, seller_commission_rate = $2, updated_at = NOW() WHERE id = $3`,
+    [payout.toFixed(2), rate.toFixed(4), auctionId]
   );
 
   return { payout, commission };
