@@ -84,6 +84,9 @@ async function loadHandlers(): Promise<void> {
   if (!HANDLERS["portfolio_price_alert"]) {
     await import("./handlers/portfolio-price-alert");
   }
+  if (!HANDLERS["wishlist_matched"]) {
+    await import("./handlers/wishlist-matched");
+  }
 }
 
 // ── Schedule ────────────────────────────────────────────────────────────

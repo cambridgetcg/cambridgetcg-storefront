@@ -12,8 +12,10 @@ import { runLiquidityMining } from "@/lib/market/liquidity";
 import { runTradeinSweep } from "@/lib/tradein/sweep";
 import { runPriceHistoryTick } from "@/lib/portfolio/price-history";
 import { runPriceAlertSweep } from "@/lib/portfolio/alerts";
+import { runWishlistMatchSweep } from "@/lib/wishlist/matching";
 import { runAnnualSpendRecompute } from "@/lib/membership/spend-sweep";
 import { runSubscriptionExpirySweep } from "@/lib/membership/subscription-sweep";
+import { runPointsExpirySweep } from "@/lib/membership/points-expiry";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -72,13 +74,19 @@ export async function GET(request: Request) {
     // we evaluate against the freshest sample. Idempotent per alert+day
     // via the queue's idempotency_key, so minute cadence is fine.
     runPriceAlertSweep(),
+    // Wishlist matching — same shape, different direction: finds wanted
+    // cards now available at ≤ max_price. Per-wishlist-item idempotency
+    // key + 7-day cooldown like price alerts.
+    runWishlistMatchSweep(),
     // Annual spend recompute — self-gates to 02:00 UTC daily
     runAnnualSpendRecompute(),
     // Subscription expiry catch-up sweep
     runSubscriptionExpirySweep(),
+    // Points expiry — self-gates to 02:30 UTC daily
+    runPointsExpirySweep(),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick, priceAlertSweep, spendRecompute, subSweep] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick, priceAlertSweep, wishlistMatchSweep, spendRecompute, subSweep] = results;
 
   const status = {
     market: market.status,
@@ -133,6 +141,10 @@ export async function GET(request: Request) {
         : priceTick.status === "rejected"
           ? { status: "rejected" }
           : { status: "skipped" },
+    wishlistMatchSweep:
+      wishlistMatchSweep.status === "fulfilled"
+        ? { status: "fulfilled", ...wishlistMatchSweep.value }
+        : { status: "rejected" },
     priceAlertSweep:
       priceAlertSweep.status === "fulfilled"
         ? { status: "fulfilled", ...priceAlertSweep.value }
