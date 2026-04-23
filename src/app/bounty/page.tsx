@@ -4,6 +4,17 @@ import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
 
+// Mirrors MERGE_COST + MERGE_CHAIN from src/lib/bounty/merge.ts. Duplicated
+// here as a pure UI constant so the page doesn't need to import server code.
+const MERGE_COST = 4;
+const MERGE_CHAIN: Record<string, string | null> = {
+  common: "uncommon",
+  uncommon: "rare",
+  rare: "super_rare",
+  super_rare: null,
+  legendary: null,
+};
+
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
@@ -116,6 +127,33 @@ export default function BountyBoard() {
         return;
       }
       setPullResult(data);
+      await refresh();
+    } catch {
+      setError("Network error.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleMerge(tier: PullTier) {
+    if (busy) return;
+    const to = MERGE_CHAIN[tier];
+    if (!to) return;
+    const toLabel = TIER_LABEL[to as PullTier] ?? to;
+    if (!confirm(`Burn ${MERGE_COST} ${TIER_LABEL[tier]} tokens to forge 1 ${toLabel}?\nThis cannot be undone.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/bounty/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from_tier: tier }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || data.error || "Merge failed.");
+        return;
+      }
       await refresh();
     } catch {
       setError("Network error.");
@@ -251,27 +289,46 @@ export default function BountyBoard() {
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-3">
-              {(Object.keys(tokens) as PullTier[]).filter(t => tokens[t] > 0).map(tier => (
-                <div
-                  key={tier}
-                  className={`relative rounded-xl p-5 bg-gradient-to-br ${TIER_COLOR[tier]} border border-white/10 overflow-hidden`}
-                >
-                  <div className="absolute -right-4 -bottom-4 text-8xl font-black text-white/5 select-none">
-                    {tokens[tier]}
+              {(Object.keys(tokens) as PullTier[]).filter(t => tokens[t] > 0).map(tier => {
+                const nextTier = MERGE_CHAIN[tier] as PullTier | null;
+                const mergeable = nextTier !== null;
+                const canMergeNow = mergeable && tokens[tier] >= MERGE_COST;
+                return (
+                  <div
+                    key={tier}
+                    className={`relative rounded-xl p-5 bg-gradient-to-br ${TIER_COLOR[tier]} border border-white/10 overflow-hidden`}
+                  >
+                    <div className="absolute -right-4 -bottom-4 text-8xl font-black text-white/5 select-none">
+                      {tokens[tier]}
+                    </div>
+                    <div className="relative">
+                      <p className="text-xs uppercase tracking-wider text-white/60 font-semibold">{TIER_LABEL[tier]} Pull</p>
+                      <p className="text-3xl font-extrabold my-1">×{tokens[tier]}</p>
+                      <button
+                        onClick={() => handlePull(tier)}
+                        disabled={busy || !eligibility?.eligible}
+                        className="mt-2 w-full bg-white/90 hover:bg-white disabled:opacity-50 text-black font-bold rounded-lg py-2 text-sm transition-colors"
+                      >
+                        {busy ? "Rolling..." : "Open"}
+                      </button>
+                      {mergeable && nextTier && (
+                        <button
+                          onClick={() => handleMerge(tier)}
+                          disabled={busy || !canMergeNow}
+                          title={canMergeNow
+                            ? `Merge ${MERGE_COST} ${TIER_LABEL[tier]} tokens into 1 ${TIER_LABEL[nextTier]}`
+                            : `Need ${MERGE_COST} tokens to merge (you have ${tokens[tier]}).`}
+                          className="mt-1.5 w-full bg-black/30 hover:bg-black/50 disabled:opacity-40 text-white/80 text-[11px] font-medium rounded-lg py-1.5 transition-colors"
+                        >
+                          {canMergeNow
+                            ? `⇧ Merge ${MERGE_COST}× → 1 ${TIER_LABEL[nextTier]}`
+                            : `${MERGE_COST - tokens[tier]} more to merge`}
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <div className="relative">
-                    <p className="text-xs uppercase tracking-wider text-white/60 font-semibold">{TIER_LABEL[tier]} Pull</p>
-                    <p className="text-3xl font-extrabold my-1">×{tokens[tier]}</p>
-                    <button
-                      onClick={() => handlePull(tier)}
-                      disabled={busy || !eligibility?.eligible}
-                      className="mt-2 w-full bg-white/90 hover:bg-white disabled:opacity-50 text-black font-bold rounded-lg py-2 text-sm transition-colors"
-                    >
-                      {busy ? "Rolling..." : "Open"}
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
