@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { formatPrice } from "@/lib/format";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useToast } from "@/components/ui/Toast";
+import HandSimulator from "@/components/deck-builder/HandSimulator";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -201,6 +202,7 @@ export default function DeckBuilderPage() {
   const [savedDecks, setSavedDecks] = useState<SavedDeck[]>([]);
   const [leaderSearchMode, setLeaderSearchMode] = useState(false);
   const [mobileShowDeck, setMobileShowDeck] = useState(false);
+  const [showSimulator, setShowSimulator] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
@@ -908,6 +910,17 @@ export default function DeckBuilderPage() {
                           <path d="M2 4h4l2 2h6v7a1 1 0 01-1 1H3a1 1 0 01-1-1V4z" />
                         </svg>
                       </button>
+                      <button
+                        onClick={() => setShowSimulator(true)}
+                        disabled={totalCards < 5}
+                        className="p-1.5 text-neutral-400 hover:text-amber-400 transition rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                        title={totalCards < 5 ? "Add 5+ cards to simulate" : "Simulate opening hand"}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <rect x="1" y="4" width="10" height="9" rx="1.5" />
+                          <rect x="4" y="2" width="10" height="9" rx="1.5" />
+                        </svg>
+                      </button>
                     </div>
                   </div>
 
@@ -1257,6 +1270,24 @@ export default function DeckBuilderPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* Hand Simulator */}
+      {showSimulator && (
+        <HandSimulator
+          leader={leader}
+          entries={deckEntries.map((e) => ({
+            card: {
+              sku: e.card.sku,
+              card_number: e.card.card_number,
+              name: e.card.name,
+              rarity: e.card.rarity,
+              image_url: e.card.image_url,
+            },
+            quantity: e.quantity,
+          }))}
+          onClose={() => setShowSimulator(false)}
+        />
       )}
     </div>
   );
