@@ -145,6 +145,11 @@ export default function DeckBuilderPage() {
   const [mobileShowDeck, setMobileShowDeck] = useState(false);
   const [showSimulator, setShowSimulator] = useState(false);
   const [showBulkImport, setShowBulkImport] = useState(false);
+  // Save-metadata state — only relevant when save modal is open. Reset when
+  // the modal opens so each save starts from a clean slate.
+  const [saveIsPublic, setSaveIsPublic] = useState(false);
+  const [saveTagsRaw, setSaveTagsRaw] = useState("");
+  const [saveNotes, setSaveNotes] = useState("");
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
@@ -366,6 +371,11 @@ export default function DeckBuilderPage() {
       if (leader) {
         serverEntries.unshift({ sku: leader.sku, quantity: 1, card: leader });
       }
+      const tags = saveTagsRaw
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, 10);
       try {
         const res = await fetch("/api/decks", {
           method: "POST",
@@ -374,6 +384,9 @@ export default function DeckBuilderPage() {
             name: deckName,
             leader_sku: leader?.sku ?? null,
             entries: serverEntries,
+            is_public: saveIsPublic,
+            tags,
+            notes: saveNotes.trim() || undefined,
           }),
         });
         if (!res.ok) {
@@ -961,7 +974,13 @@ export default function DeckBuilderPage() {
                     />
                     <div className="flex gap-1">
                       <button
-                        onClick={() => setShowSaveModal(true)}
+                        onClick={() => {
+                          // Reset save-metadata state each time the modal opens.
+                          setSaveIsPublic(false);
+                          setSaveTagsRaw("");
+                          setSaveNotes("");
+                          setShowSaveModal(true);
+                        }}
                         className="p-1.5 text-neutral-400 hover:text-white transition rounded"
                         title="Save Deck"
                       >
@@ -1246,20 +1265,71 @@ export default function DeckBuilderPage() {
           }}
         >
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl max-w-sm w-full p-6">
+          <div className="relative bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-white mb-4">Save Deck</h3>
+            <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-bold">Name</label>
             <input
               type="text"
               value={deckName}
               onChange={(e) => setDeckName(e.target.value)}
               placeholder="Deck name..."
-              className="w-full px-4 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-500 focus:outline-none focus:border-amber-500/50 transition text-sm mb-4"
+              className="w-full mt-1 px-4 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-500 focus:outline-none focus:border-amber-500/50 transition text-sm"
             />
-            <p className="text-xs text-neutral-500 mb-4">
+
+            {signedIn && (
+              <>
+                <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-bold mt-4 block">
+                  Tags <span className="text-neutral-600 normal-case">(comma separated, max 10)</span>
+                </label>
+                <input
+                  type="text"
+                  value={saveTagsRaw}
+                  onChange={(e) => setSaveTagsRaw(e.target.value)}
+                  placeholder="aggro, budget, tournament-ready"
+                  className="w-full mt-1 px-4 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-500 focus:outline-none focus:border-amber-500/50 transition text-sm"
+                />
+
+                <label className="text-[11px] uppercase tracking-wider text-neutral-500 font-bold mt-4 block">
+                  Notes <span className="text-neutral-600 normal-case">(optional, 2000 char max)</span>
+                </label>
+                <textarea
+                  value={saveNotes}
+                  onChange={(e) => setSaveNotes(e.target.value.slice(0, 2000))}
+                  placeholder="Deck guide, mulligan priorities, tech choices..."
+                  rows={4}
+                  className="w-full mt-1 px-4 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg text-white placeholder:text-neutral-500 focus:outline-none focus:border-amber-500/50 transition text-sm resize-y"
+                />
+
+                <label className="flex items-start gap-3 mt-4 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={saveIsPublic}
+                    onChange={(e) => setSaveIsPublic(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-amber-500"
+                  />
+                  <div>
+                    <p className="text-sm font-semibold text-white">Publish to community</p>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                      Listed at /decks so other players can read and copy it.
+                      You can un-publish later by re-saving with this unchecked.
+                    </p>
+                  </div>
+                </label>
+              </>
+            )}
+
+            {!signedIn && (
+              <div className="mt-4 bg-amber-900/20 border border-amber-700/40 text-amber-300 rounded-lg px-3 py-2 text-xs">
+                Sign in to save to your account, publish publicly, and sync across devices.
+              </div>
+            )}
+
+            <p className="text-xs text-neutral-500 mt-4">
               {totalCards} cards &middot; {formatPrice(fullDeckValue)}
-              {leader ? ` &middot; Leader: ${leader.name}` : ""}
+              {leader ? ` · Leader: ${leader.name}` : ""}
             </p>
-            <div className="flex gap-3">
+
+            <div className="flex gap-3 mt-5">
               <button
                 onClick={() => setShowSaveModal(false)}
                 className="flex-1 py-2.5 px-4 bg-neutral-800 text-neutral-300 text-sm font-medium rounded-lg hover:bg-neutral-700 transition"
@@ -1270,7 +1340,7 @@ export default function DeckBuilderPage() {
                 onClick={saveDeck}
                 className="flex-1 py-2.5 px-4 bg-amber-500 text-black text-sm font-bold rounded-lg hover:bg-amber-400 transition"
               >
-                Save
+                {saveIsPublic ? "Save & Publish" : "Save"}
               </button>
             </div>
           </div>
