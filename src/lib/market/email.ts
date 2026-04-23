@@ -145,6 +145,36 @@ export async function sendPayoutEmail(d: {
   await send(d.email, subject, html, text);
 }
 
+// ── Follower notification — someone you follow listed an auction ──
+
+export async function sendFollowerAuctionListedEmail(d: {
+  email: string;
+  followerName: string | null;
+  sellerName: string;
+  sellerUsername: string;
+  auctionTitle: string;
+  auctionId: string;
+  imageUrl: string | null;
+  startingPrice: number;
+  buyNowPrice: number | null;
+  endsAt: string;
+}) {
+  const fmt = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" });
+  const url = `${SITE}/auctions/${d.auctionId}`;
+  const subject = `${d.sellerName} just listed: ${d.auctionTitle}`;
+  const text = `${d.sellerName} (@${d.sellerUsername}) listed "${d.auctionTitle}" at ${fmt.format(d.startingPrice)}${d.buyNowPrice ? ` (BIN ${fmt.format(d.buyNowPrice)})` : ""}. ${url}`;
+  const html = tpl(
+    `${d.sellerName} listed a new auction`,
+    `<p>${d.followerName ? `Hi ${d.followerName}, ` : ""}a seller you follow just posted:</p>
+     <p><strong style="color:#fff;font-size:16px;">${d.auctionTitle}</strong></p>
+     <p>Starting: <strong style="color:#f59e0b;">${fmt.format(d.startingPrice)}</strong>${d.buyNowPrice ? ` &middot; Buy Now: <strong>${fmt.format(d.buyNowPrice)}</strong>` : ""}</p>
+     <p style="color:#737373;font-size:12px;">Ends ${new Date(d.endsAt).toUTCString()}</p>
+     <p style="color:#737373;font-size:12px;">By <a href="${SITE}/u/${d.sellerUsername}" style="color:#f59e0b;">@${d.sellerUsername}</a> &middot; <a href="${SITE}/account/profile" style="color:#737373;">Manage follows</a></p>`,
+    "View auction", url
+  );
+  await send(d.email, subject, html, text);
+}
+
 // ── Weekly digests ──
 
 export async function sendSellerRestockDigest(d: {

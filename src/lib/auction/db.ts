@@ -499,7 +499,29 @@ export async function approveAuction(auctionId: string, notes?: string): Promise
      WHERE id = $1 AND approval_status = 'pending_review' RETURNING *`,
     [auctionId, notes || null]
   );
-  return result.rows[0] as Auction ?? null;
+  const auction = (result.rows[0] as Auction) ?? null;
+
+  // Broadcast to the seller's followers now that the auction is actually
+  // visible. Fire-and-forget — approval shouldn't block on email dispatch.
+  // Uses the main image (if any) as the preview; first image is the cover.
+  if (auction && auction.seller_user_id) {
+    const image = await query(
+      `SELECT url FROM auction_images WHERE auction_id = $1 ORDER BY display_order LIMIT 1`,
+      [auction.id]
+    );
+    const { notifyFollowersOfAuctionListing } = await import("@/lib/social/notify");
+    notifyFollowersOfAuctionListing({
+      sellerId: auction.seller_user_id,
+      auctionId: auction.id,
+      auctionTitle: auction.title,
+      imageUrl: image.rows[0]?.url ?? null,
+      startingPrice: parseFloat(auction.starting_price),
+      buyNowPrice: auction.buy_now_price ? parseFloat(auction.buy_now_price) : null,
+      endsAt: auction.ends_at,
+    }).catch((err) => console.error("[auction] follower-notify failed:", err));
+  }
+
+  return auction;
 }
 
 export async function rejectAuction(auctionId: string, notes: string): Promise<Auction | null> {

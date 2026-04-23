@@ -160,6 +160,18 @@ export async function runBuyerWatchlistDigest(opts?: { force?: boolean }): Promi
       WHERE u.email IS NOT NULL`
   );
 
+  // Collect all users-with-follows in one pass so the per-user loop below
+  // can cheaply enrich its digest with followed-seller asks.
+  const followed = await query(
+    `SELECT follower_id, following_id FROM follows`
+  );
+  const followedBy = new Map<string, string[]>();
+  for (const f of followed.rows) {
+    const arr = followedBy.get(f.follower_id) ?? [];
+    arr.push(f.following_id);
+    followedBy.set(f.follower_id, arr);
+  }
+
   let sent = 0;
   for (const w of watchers.rows) {
     // Per-user: find price moves on their watches over last 7d.
@@ -245,6 +257,37 @@ export async function runBuyerWatchlistDigest(opts?: { force?: boolean }): Promi
 
       return { cardName: r.card_name as string, sku: r.sku as string, before, after, note };
     });
+
+    // Enrich with "seller you follow" activity: fresh asks from followed
+    // sellers over the last 7d. Keeps follower signal in the digest without
+    // a separate email type.
+    const followedIds = followedBy.get(w.user_id);
+    if (followedIds && followedIds.length > 0) {
+      const followedAsks = await query(
+        `SELECT o.sku, o.card_name, o.price::numeric AS ask_price,
+                o.created_at, u.username AS seller_username
+           FROM market_orders o
+           JOIN users u ON u.id = o.user_id
+          WHERE o.side = 'ask'
+            AND o.status IN ('open','partially_filled')
+            AND o.user_id = ANY($1)
+            AND o.created_at > NOW() - INTERVAL '7 days'
+            AND o.card_name IS NOT NULL
+          ORDER BY o.created_at DESC
+          LIMIT 5`,
+        [followedIds]
+      );
+      for (const a of followedAsks.rows) {
+        if (digested.length >= MAX_MOVES_PER_BUYER) break;
+        digested.push({
+          cardName: a.card_name as string,
+          sku: a.sku as string,
+          before: null,
+          after: parseFloat(a.ask_price),
+          note: `@${a.seller_username} listed`,
+        });
+      }
+    }
 
     if (digested.length === 0) continue;
 
