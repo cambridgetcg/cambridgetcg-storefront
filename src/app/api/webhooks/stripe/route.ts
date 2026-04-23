@@ -196,7 +196,44 @@ export async function POST(request: Request) {
         awardAchievement(userId, "first_purchase").catch(() => {});
       }
 
-      // Process membership rewards (points + cashback)
+      // Debit applied store credit. The amount is in metadata (set by
+      // /api/checkout) so we don't have to round-trip. Atomic via a
+      // single UPDATE that refuses to go negative; if balance changed
+      // mid-flight (concurrent debits, manual adjustments), the user
+      // sees a partial debit and a ledger entry reflects what was
+      // actually subtracted.
+      const creditAppliedGbp = session.metadata?.credit_applied_gbp
+        ? parseFloat(session.metadata.credit_applied_gbp)
+        : 0;
+      const creditUserId = session.metadata?.credit_user_id || userId;
+      if (creditUserId && creditAppliedGbp > 0) {
+        try {
+          const debitRes = await query(
+            `UPDATE users
+                SET store_credit_balance = GREATEST(0, store_credit_balance - $2),
+                    updated_at = NOW()
+              WHERE id = $1
+              RETURNING store_credit_balance::numeric AS balance`,
+            [creditUserId, creditAppliedGbp.toFixed(2)]
+          );
+          if (debitRes.rows[0]) {
+            await query(
+              `INSERT INTO store_credit_ledger (user_id, amount, balance, type, description, reference_id)
+               VALUES ($1, $2, $3, 'redeemed_checkout', $4, $5)`,
+              [creditUserId, (-creditAppliedGbp).toFixed(2), debitRes.rows[0].balance,
+               `Applied at checkout`, session.id]
+            );
+            console.log(`[webhook] Credit redeemed: £${creditAppliedGbp.toFixed(2)} for ${creditUserId}`);
+          }
+        } catch (creditErr) {
+          console.error("[webhook] Credit debit failed:", creditErr);
+        }
+      }
+
+      // Process membership rewards (points + cashback). `total` is the cash
+      // amount Stripe actually collected — i.e. cart subtotal minus credit
+      // and minus tier discount. So rewards naturally apply to "cash spent",
+      // matching the marketing promise.
       if (userId && total > 0) {
         try {
           const rewards = await processOrderRewards(userId, total, session.id);
