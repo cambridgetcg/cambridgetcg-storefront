@@ -240,10 +240,17 @@ export async function openMysteryBox(boxId: string, userId: string): Promise<{
     awardAchievement(userId, "mystery_legendary").catch(() => {});
   }
 
-  // Auto-fulfill points and credit rewards
+  // Auto-fulfill points and credit rewards. Points go through the
+  // multiplier-aware helper so tier + streak boost the box's points payout.
   if (selectedReward.reward_type === "points") {
-    await earnPoints(userId, parseFloat(selectedReward.reward_value), "manual_credit",
-      `Won ${selectedReward.reward_value} Berries from "${box.title}"`, openResult.rows[0].id);
+    const { earnRewardPoints } = await import("./earnings");
+    await earnRewardPoints({
+      userId,
+      baseAmount: parseFloat(selectedReward.reward_value),
+      type: "manual_credit",
+      description: `Won ${selectedReward.reward_value} Berries from "${box.title}"`,
+      referenceId: openResult.rows[0].id,
+    });
     await query(`UPDATE mystery_box_opens SET fulfilled=true WHERE id=$1`, [openResult.rows[0].id]);
   } else if (selectedReward.reward_type === "credit") {
     await addCredit(userId, parseFloat(selectedReward.reward_value), "manual_adjustment",

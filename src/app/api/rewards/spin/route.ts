@@ -87,10 +87,16 @@ export async function POST(request: Request) {
     if (roll <= 0) { selectedIndex = i; selected = segments[i]; break; }
   }
 
-  // Award reward
+  // Award reward — points go through the multiplier-aware helper so
+  // tier + streak boost the spin's points payout, mirroring orders.
   if (selected.reward_type === "points" && selected.reward_value > 0) {
-    await earnPoints(session.user.id, selected.reward_value, "manual_credit",
-      `Spin wheel: ${selected.label}`);
+    const { earnRewardPoints } = await import("@/lib/rewards/earnings");
+    await earnRewardPoints({
+      userId: session.user.id,
+      baseAmount: selected.reward_value,
+      type: "manual_credit",
+      description: `Spin wheel: ${selected.label}`,
+    });
   } else if (selected.reward_type === "credit" && selected.reward_value > 0) {
     await addCredit(session.user.id, selected.reward_value, "manual_adjustment",
       `Spin wheel: ${selected.label}`);

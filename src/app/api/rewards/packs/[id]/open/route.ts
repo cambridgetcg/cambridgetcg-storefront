@@ -69,10 +69,17 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     // Update awarded count
     await query(`UPDATE reward_pack_pools SET awarded=awarded+1 WHERE id=$1`, [selected.id]);
 
-    // Auto-fulfill points and credit rewards
+    // Auto-fulfill points and credit rewards. Points pulls go through the
+    // multiplier-aware helper so tier + streak apply.
     if (selected.reward_type === "points") {
-      await earnPoints(session.user.id, parseFloat(selected.reward_value), "manual_credit",
-        `Pack pull: ${selected.card_name}`, packResult.rows[0].id);
+      const { earnRewardPoints } = await import("@/lib/rewards/earnings");
+      await earnRewardPoints({
+        userId: session.user.id,
+        baseAmount: parseFloat(selected.reward_value),
+        type: "manual_credit",
+        description: `Pack pull: ${selected.card_name}`,
+        referenceId: packResult.rows[0].id,
+      });
     } else if (selected.reward_type === "credit") {
       await addCredit(session.user.id, parseFloat(selected.reward_value), "manual_adjustment",
         `Pack pull: ${selected.card_name}`, packResult.rows[0].id);
