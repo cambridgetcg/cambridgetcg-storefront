@@ -771,6 +771,7 @@ export async function recordTradePayout(data: {
         sellerUserId: trade.seller_id,
         amountGbp: parseFloat(trade.seller_payout),
         description: `Payout for trade ${data.tradeId} (${trade.card_name})`,
+        idempotencyKey: `payout-trade-${data.tradeId}`,
         metadata: { tradeId: data.tradeId, kind: "market_trade" },
       });
       transferId = result.transferId;

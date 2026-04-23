@@ -56,17 +56,32 @@ export async function getConnectStatus(userId: string): Promise<ConnectStatus> {
   };
 }
 
+// ISO 3166-1 alpha-2 country codes Stripe Connect supports for Express.
+// Full list is long; we expose the common ones to sellers. Country is
+// permanent for an Express account once set, so the UI should be clear.
+export const SUPPORTED_COUNTRIES = [
+  "GB", "IE", "US", "CA", "AU", "NZ",
+  "FR", "DE", "ES", "IT", "NL", "BE", "AT", "PT", "FI", "SE", "DK", "NO",
+  "CH", "PL", "CZ", "HU", "RO", "GR", "LU", "EE", "LV", "LT", "SK", "SI", "BG", "HR", "CY", "MT",
+  "JP", "SG", "HK", "AE",
+] as const;
+export type SupportedCountry = typeof SUPPORTED_COUNTRIES[number];
+
 // Create a fresh Express account for the user and persist the id. Idempotent:
-// if one already exists we return it. Country defaults to GB matching the
-// platform's UK focus; sellers outside the UK would need a different flow.
-export async function getOrCreateAccount(userId: string, email: string): Promise<string> {
+// if one already exists we return it regardless of the requested country
+// (country is fixed once the account is created).
+export async function getOrCreateAccount(
+  userId: string,
+  email: string,
+  country: SupportedCountry = "GB"
+): Promise<string> {
   const existing = await getConnectStatus(userId);
   if (existing.accountId) return existing.accountId;
 
   const stripe = getStripe();
   const account = await stripe.accounts.create({
     type: "express",
-    country: "GB",
+    country,
     email,
     capabilities: {
       transfers: { requested: true },
@@ -101,6 +116,8 @@ export async function createOnboardingLink(accountId: string): Promise<string> {
 
 // Pulls the current state from Stripe and writes it onto the user row. Called
 // from the webhook (account.updated) and from a "Refresh" button on the UI.
+// Fires a one-time welcome email the first time the account transitions to
+// 'verified' (detected by comparing the prior status row).
 export async function syncAccountFromStripe(accountId: string): Promise<ConnectStatus | null> {
   const stripe = getStripe();
   const account = await stripe.accounts.retrieve(accountId);
@@ -112,6 +129,14 @@ export async function syncAccountFromStripe(accountId: string): Promise<ConnectS
     (account.requirements?.currently_due?.length || account.requirements?.past_due?.length) ? "incomplete" :
     "pending";
 
+  // Read prior status so we can detect the "just became verified" edge
+  const prior = await query(
+    `SELECT id, email, name, stripe_connect_status
+       FROM users WHERE stripe_connect_account_id = $1`,
+    [accountId]
+  );
+  const priorStatus = prior.rows[0]?.stripe_connect_status ?? null;
+
   await query(
     `UPDATE users
         SET stripe_connect_status = $2,
@@ -122,22 +147,31 @@ export async function syncAccountFromStripe(accountId: string): Promise<ConnectS
     [accountId, status, !!account.charges_enabled, !!account.payouts_enabled]
   );
 
-  // Return the new status from the local row (caller may want it)
-  const r = await query(
-    `SELECT id FROM users WHERE stripe_connect_account_id = $1`,
-    [accountId]
-  );
-  if (r.rows.length === 0) return null;
-  return getConnectStatus(r.rows[0].id);
+  // First-verified transition: welcome email, fire-and-forget
+  if (status === "verified" && priorStatus !== "verified" && prior.rows[0]?.email) {
+    const { sendPayoutReadyEmail } = await import("@/lib/market/email");
+    sendPayoutReadyEmail({
+      email: prior.rows[0].email,
+      name: prior.rows[0].name,
+    }).catch((err) => console.error("[payouts] Welcome email failed:", err));
+  }
+
+  if (prior.rows.length === 0) return null;
+  return getConnectStatus(prior.rows[0].id);
 }
 
 // Create a Transfer to the seller's connected account. amount is in pounds
 // (we convert to pence). Returns the transfer id; callers persist it onto
 // the trade/auction row alongside the existing payout fields.
+//
+// idempotencyKey should be stable per logical payout (e.g. "trade-<id>") so
+// that a retry after a transient failure doesn't double-pay. Stripe will
+// return the original transfer object on a duplicate key.
 export async function createTransferToSeller(opts: {
   sellerUserId: string;
   amountGbp: number;
   description: string;
+  idempotencyKey: string;
   metadata?: Record<string, string>;
 }): Promise<{ transferId: string }> {
   const status = await getConnectStatus(opts.sellerUserId);
@@ -149,13 +183,16 @@ export async function createTransferToSeller(opts: {
   }
 
   const stripe = getStripe();
-  const transfer = await stripe.transfers.create({
-    amount: Math.round(opts.amountGbp * 100),
-    currency: "gbp",
-    destination: status.accountId,
-    description: opts.description,
-    metadata: opts.metadata,
-  });
+  const transfer = await stripe.transfers.create(
+    {
+      amount: Math.round(opts.amountGbp * 100),
+      currency: "gbp",
+      destination: status.accountId,
+      description: opts.description,
+      metadata: opts.metadata,
+    },
+    { idempotencyKey: opts.idempotencyKey }
+  );
 
   return { transferId: transfer.id };
 }

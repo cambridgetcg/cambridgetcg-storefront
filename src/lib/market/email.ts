@@ -109,6 +109,23 @@ export async function sendStatusEmail(d: {
   await send(d.email, d.subject, html, text);
 }
 
+// ── Connect onboarding complete ──
+
+export async function sendPayoutReadyEmail(d: { email: string; name?: string | null }) {
+  const payoutsUrl = `${SITE}/account/payouts`;
+  const subject = "You're ready to receive payouts";
+  const text = `Your Stripe account is verified. Future payouts will go straight to your bank. Manage at ${payoutsUrl}`;
+  const html = tpl(
+    "You're set up for payouts",
+    `<p>${d.name ? `Hi ${d.name}, ` : ""}your Stripe account is verified and ready.</p>
+     <p>Any payouts we process for you — from completed trades or won auctions — will arrive
+        directly in the bank account you connected. Payout timing depends on Stripe's schedule
+        (usually 1&ndash;2 business days after we send the transfer).</p>`,
+    "Manage Payouts", payoutsUrl
+  );
+  await send(d.email, subject, html, text);
+}
+
 // ── Payout sent ──
 
 export async function sendPayoutEmail(d: {

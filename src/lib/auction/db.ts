@@ -819,6 +819,7 @@ export async function recordAuctionPayout(data: {
         sellerUserId: a.seller_user_id,
         amountGbp: parseFloat(a.seller_payout),
         description: `Payout for auction ${data.auctionId} (${a.title})`,
+        idempotencyKey: `payout-auction-${data.auctionId}`,
         metadata: { auctionId: data.auctionId, kind: "auction" },
       });
       transferId = result.transferId;

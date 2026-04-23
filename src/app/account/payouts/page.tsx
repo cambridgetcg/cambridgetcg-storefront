@@ -54,6 +54,16 @@ export default function PayoutsPage() {
   const [onboarding, setOnboarding] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [country, setCountry] = useState("GB");
+  const [countries, setCountries] = useState<string[]>([]);
+
+  // Country list is only needed pre-onboarding; fetched lazily.
+  useEffect(() => {
+    fetch("/api/account/payouts/countries")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.countries) setCountries(d.countries); })
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -87,7 +97,13 @@ export default function PayoutsPage() {
     setOnboarding(true);
     setError(null);
     try {
-      const res = await fetch("/api/account/payouts/onboard", { method: "POST" });
+      const res = await fetch("/api/account/payouts/onboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // country is only consulted on first-time account creation; ignored
+        // for returning sellers since Express accounts have fixed country
+        body: JSON.stringify({ country }),
+      });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Failed to start onboarding");
@@ -146,6 +162,21 @@ export default function PayoutsPage() {
               Stripe handles identity verification, bank details, and payouts. Takes a few minutes.
               You only need to do this once.
             </p>
+            <div className="mb-4">
+              <label className="block text-xs text-neutral-500 mb-1">Country</label>
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="w-full max-w-xs px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white text-sm"
+              >
+                {(countries.length ? countries : ["GB"]).map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-neutral-500 mt-1">
+                Country is fixed once your Stripe account is created. Choose carefully.
+              </p>
+            </div>
             <button
               onClick={startOnboarding}
               disabled={onboarding}

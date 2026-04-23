@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runMarketMaintenance } from "@/lib/market/db";
 import { runAuctionMaintenance } from "@/lib/auction/db";
 import { runBountyExpiry } from "@/lib/bounty/db";
+import { runPayoutSweep } from "@/lib/payouts/sweep";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -26,9 +27,10 @@ export async function GET(request: Request) {
     runMarketMaintenance(),
     runAuctionMaintenance(),
     runBountyExpiry(),
+    runPayoutSweep(),
   ]);
 
-  const [market, auctions, bounty] = results;
+  const [market, auctions, bounty, payouts] = results;
 
   const status = {
     market: market.status,
@@ -36,6 +38,10 @@ export async function GET(request: Request) {
     bounty:
       bounty.status === "fulfilled"
         ? { status: "fulfilled", ...bounty.value }
+        : { status: "rejected" },
+    payouts:
+      payouts.status === "fulfilled"
+        ? { status: "fulfilled", ...payouts.value }
         : { status: "rejected" },
     durationMs: Date.now() - start,
   };
@@ -45,6 +51,18 @@ export async function GET(request: Request) {
   if (bounty.status === "rejected") console.error("[cron] bounty expiry failed:", bounty.reason);
   else if (bounty.value.expiredCount > 0) {
     console.log(`[cron] bounty: expired ${bounty.value.expiredCount} items, awarded £${bounty.value.creditTotalGbp.toFixed(2)}`);
+  }
+  if (payouts.status === "rejected") console.error("[cron] payout sweep failed:", payouts.reason);
+  else if (payouts.value.tradesPaid + payouts.value.auctionsPaid > 0 ||
+           payouts.value.tradeFailures.length + payouts.value.auctionFailures.length > 0) {
+    console.log(
+      `[cron] payouts: ${payouts.value.tradesPaid} trades + ${payouts.value.auctionsPaid} auctions paid; ` +
+      `${payouts.value.tradeFailures.length + payouts.value.auctionFailures.length} failed` +
+      (payouts.value.throttled ? " (throttled)" : "")
+    );
+    for (const f of [...payouts.value.tradeFailures, ...payouts.value.auctionFailures]) {
+      console.error(`[cron] payout failure ${f.id}: ${f.error}`);
+    }
   }
 
   return NextResponse.json(status);
