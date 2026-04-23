@@ -19,9 +19,8 @@ export default function CheckoutPage() {
     fetch("/api/membership")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d && typeof d.store_credit_balance === "number") {
-          setCreditBalance(d.store_credit_balance);
-        }
+        const balance = d?.profile?.store_credit_balance;
+        if (typeof balance === "number") setCreditBalance(balance);
       })
       .catch(() => {});
   }, []);

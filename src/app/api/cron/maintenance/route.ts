@@ -86,7 +86,7 @@ export async function GET(request: Request) {
     runPointsExpirySweep(),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick, priceAlertSweep, wishlistMatchSweep, spendRecompute, subSweep] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest, liquidity, tradeinSweep, priceTick, priceAlertSweep, wishlistMatchSweep, spendRecompute, subSweep, pointsExpiry] = results;
 
   const status = {
     market: market.status,
@@ -158,6 +158,12 @@ export async function GET(request: Request) {
     subSweep:
       subSweep.status === "fulfilled"
         ? { status: "fulfilled", ...subSweep.value }
+        : { status: "rejected" },
+    pointsExpiry:
+      pointsExpiry.status === "fulfilled"
+        ? (pointsExpiry.value.ranInWindow
+            ? { status: "fulfilled", ...pointsExpiry.value }
+            : { status: "skipped" })
         : { status: "rejected" },
     durationMs: Date.now() - start,
   };
@@ -232,6 +238,13 @@ export async function GET(request: Request) {
     console.log(
       `[cron] spend recompute: ${spendRecompute.value.recomputed} users, ` +
       `${spendRecompute.value.tierChanges} tier changes, ${spendRecompute.value.failures} failures`
+    );
+  }
+  if (pointsExpiry.status === "rejected") console.error("[cron] points expiry failed:", pointsExpiry.reason);
+  else if (pointsExpiry.value.ranInWindow && pointsExpiry.value.expired > 0) {
+    console.log(
+      `[cron] points expiry: ${pointsExpiry.value.expired} users, ` +
+      `${pointsExpiry.value.totalPointsExpired} berries expired, ${pointsExpiry.value.failures} failures`
     );
   }
   if (subSweep.status === "rejected") console.error("[cron] subscription sweep failed:", subSweep.reason);

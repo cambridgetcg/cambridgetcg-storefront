@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getMemberProfile, getAllTiers } from "@/lib/membership/db";
+import { getExpiringSoon } from "@/lib/membership/points-expiry";
 
 // GET — member profile with tier, points, perks, progress
 export async function GET(request: Request) {
@@ -18,6 +19,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   }
 
-  const profile = await getMemberProfile(session.user.id);
-  return NextResponse.json({ profile });
+  const [profile, expiringSoon] = await Promise.all([
+    getMemberProfile(session.user.id),
+    getExpiringSoon(session.user.id, 30),
+  ]);
+  return NextResponse.json({ profile, expiringSoon });
 }
