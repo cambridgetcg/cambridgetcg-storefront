@@ -41,6 +41,7 @@ export async function POST(request: Request) {
     rarity: result.vault_item.rarity,
     spotPriceGbp: parseFloat(result.vault_item.spot_price_gbp),
     imageUrl: result.vault_item.image_url,
+    pullId: result.pull_id,
     vaultItemId: result.vault_item.id,
     expiresAt: new Date(result.vault_item.expires_at),
     rngCommitment: result.rng_commitment,

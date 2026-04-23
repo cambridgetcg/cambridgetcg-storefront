@@ -109,6 +109,7 @@ export interface PullResolvedEmailArgs {
   rarity: string | null;
   spotPriceGbp: number;
   imageUrl: string | null;
+  pullId: string;              // for /bounty/verify/<id> link
   vaultItemId: string;
   expiresAt: Date;
   rngCommitment: string;
@@ -159,6 +160,11 @@ export async function sendPullResolvedEmail(args: PullResolvedEmailArgs): Promis
       Verify: <code style="color:#a3a3a3;">sha256(seed) == commit</code>.
       The first hex digits of <code style="color:#a3a3a3;">sha256(seed:client:nonce)</code>
       determined the rarity and the SKU — independent of us.
+    </p>
+    <p style="margin:8px 0 0;font-size:12px;">
+      <a href="https://cambridgetcg.com/bounty/verify/${escapeHtml(args.pullId)}" style="color:#a3a3a3;text-decoration:underline;">
+        Run the verification in your browser &rarr;
+      </a>
     </p>
   `;
 

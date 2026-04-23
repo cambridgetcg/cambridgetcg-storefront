@@ -535,6 +535,13 @@ function PullResultModal({ result, onClose }: { result: PullResult; onClose: () 
         <p className="mt-4 text-[10px] text-neutral-600 font-mono break-all">
           RNG commit: {result.rng_commitment.slice(0, 32)}...
         </p>
+        <Link
+          href={`/bounty/verify/${result.pull_id}`}
+          target="_blank"
+          className="text-[11px] text-amber-400/80 hover:text-amber-400 underline mt-1 inline-block"
+        >
+          Verify this pull &rarr;
+        </Link>
         <button
           onClick={onClose}
           className="mt-4 w-full bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg py-2.5 text-sm transition-colors"
