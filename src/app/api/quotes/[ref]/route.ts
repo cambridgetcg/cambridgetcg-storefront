@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { isAdmin } from "@/lib/admin/auth";
-import { getQuoteByRef, getQuoteDetail, setItemPrices, sendOffer, respondToOffer } from "@/lib/quote/db";
+import {
+  getQuoteByRef, getQuoteDetail, setItemPrices, sendOffer, respondToOffer,
+  updateQuoteStatus, issueQuoteCreditIfDue, payQuoteCashIfDue,
+} from "@/lib/quote/db";
 import { sendQuoteOfferEmail, sendQuoteAcceptedAdminNotification } from "@/lib/quote/email";
 import { query } from "@/lib/db";
 
@@ -59,6 +62,34 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ re
       [request_row.id]
     );
     return NextResponse.json({ request: updated.rows[0] });
+  }
+
+  // Action: lifecycle status updates beyond the quoted/accepted dance.
+  // Mirrors the trade-in admin flow: received → paid (credit + transfer
+  // both fire automatically when paid, idempotent across re-flips).
+  if (body.action === "set_status") {
+    const validStatuses = ["received", "paid", "cancelled"];
+    if (!validStatuses.includes(body.status)) {
+      return NextResponse.json({ error: "Invalid status." }, { status: 400 });
+    }
+    const updated = await updateQuoteStatus(ref, body.status);
+    if (!updated) return NextResponse.json({ error: "Quote not found." }, { status: 404 });
+
+    let creditResult: Awaited<ReturnType<typeof issueQuoteCreditIfDue>> | null = null;
+    let cashResult: Awaited<ReturnType<typeof payQuoteCashIfDue>> | null = null;
+    if (body.status === "paid") {
+      try { creditResult = await issueQuoteCreditIfDue(ref); }
+      catch (err) {
+        console.error("[quote] Credit issuance failed:", err);
+        creditResult = { ok: false, reason: "credit issuance threw" };
+      }
+      try { cashResult = await payQuoteCashIfDue(ref); }
+      catch (err) {
+        console.error("[quote] Cash payout failed:", err);
+        cashResult = { ok: false, reason: "cash payout threw" };
+      }
+    }
+    return NextResponse.json({ request: updated, credit: creditResult, cash: cashResult });
   }
 
   return NextResponse.json({ error: "Unknown action." }, { status: 400 });
