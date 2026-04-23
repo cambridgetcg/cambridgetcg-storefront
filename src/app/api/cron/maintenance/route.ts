@@ -4,6 +4,7 @@ import { runAuctionMaintenance } from "@/lib/auction/db";
 import { runBountyExpiry } from "@/lib/bounty/db";
 import { runPayoutSweep } from "@/lib/payouts/sweep";
 import { runAlertSweep } from "@/lib/market/watches";
+import { drainEmailQueue } from "@/lib/email/queue";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -30,9 +31,10 @@ export async function GET(request: Request) {
     runBountyExpiry(),
     runPayoutSweep(),
     runAlertSweep(),
+    drainEmailQueue({ limit: 100 }),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts] = results;
+  const [market, auctions, bounty, payouts, alerts, emails] = results;
 
   const status = {
     market: market.status,
@@ -48,6 +50,10 @@ export async function GET(request: Request) {
     alerts:
       alerts.status === "fulfilled"
         ? { status: "fulfilled", ...alerts.value }
+        : { status: "rejected" },
+    emails:
+      emails.status === "fulfilled"
+        ? { status: "fulfilled", ...emails.value }
         : { status: "rejected" },
     durationMs: Date.now() - start,
   };
@@ -76,6 +82,17 @@ export async function GET(request: Request) {
       `[cron] alerts: ${alerts.value.fired} fired, ${alerts.value.failures} failed` +
       (alerts.value.throttled ? " (throttled)" : "")
     );
+  }
+  if (emails.status === "rejected") console.error("[cron] email drain failed:", emails.reason);
+  else if (emails.value.picked > 0) {
+    console.log(
+      `[cron] emails: picked ${emails.value.picked}, ` +
+      `sent ${emails.value.sent}, cancelled ${emails.value.cancelled}, ` +
+      `failed ${emails.value.failed}, dead ${emails.value.dead}`,
+    );
+    for (const e of emails.value.errors) {
+      console.error(`[cron] email queue error ${e.id} (${e.event}): ${e.error}`);
+    }
   }
 
   return NextResponse.json(status);

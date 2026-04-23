@@ -172,7 +172,25 @@ export async function createVaultItem(a: CreateVaultItemArgs): Promise<VaultItem
       a.bountyPullId ?? null,
     ],
   );
-  return r.rows[0];
+  const item = r.rows[0] as VaultItem;
+
+  // Queue the 7-day expiry warning. Fire-and-forget — if the scheduler is
+  // down, the item is still created; we just lose the reminder.
+  try {
+    const { scheduleEmail } = await import("@/lib/email/queue");
+    const warningTime = new Date(new Date(item.expires_at).getTime() - 7 * 86400000);
+    await scheduleEmail({
+      userId: a.userId,
+      event: "vault_expiring_soon",
+      data: { vaultItemId: item.id },
+      scheduledFor: warningTime,
+      idempotencyKey: `vault_expiring_soon:${item.id}`,
+    });
+  } catch (err) {
+    console.warn(`[bounty] failed to schedule expiry warning for vault_item ${item.id}:`, err);
+  }
+
+  return item;
 }
 
 // ── Eligibility ──
