@@ -42,34 +42,38 @@ export async function GET() {
        LEFT JOIN card_meta cm ON cm.sku = h.sku
      UNION ALL
      SELECT 'movers' AS bucket, m.sku, cm.card_name, cm.image_url,
-            NULL::int      AS n1,
-            NULL::int      AS n2,
-            m.last_price   AS v1,
-            m.change_pct   AS v2
+            NULL::int     AS n1,
+            NULL::int     AS n2,
+            m.last_price  AS v1,
+            m.change_pct  AS v2
        FROM (
-         SELECT sku,
-                (SELECT price::numeric FROM market_trades t2
-                  WHERE t2.sku = t1.sku AND t2.escrow_status <> 'cancelled'
-                  ORDER BY created_at DESC LIMIT 1) AS last_price,
-                (SELECT price::numeric FROM market_trades t2
-                  WHERE t2.sku = t1.sku AND t2.escrow_status <> 'cancelled'
-                    AND created_at <= NOW() - INTERVAL '24 hours'
-                  ORDER BY created_at DESC LIMIT 1) AS prior_price
-           FROM market_trades t1
-          WHERE t1.created_at > NOW() - INTERVAL '24 hours'
-            AND t1.escrow_status <> 'cancelled'
-          GROUP BY t1.sku
-       ) t
-       CROSS JOIN LATERAL (
-         SELECT t.last_price,
-                CASE WHEN t.prior_price IS NULL OR t.prior_price = 0 THEN NULL
-                     ELSE ((t.last_price - t.prior_price) / t.prior_price) * 100
-                END AS change_pct
+         -- Subquery owns ORDER BY + LIMIT so they don't bubble to the outer union
+         SELECT x.sku, x.last_price, x.change_pct
+           FROM (
+             SELECT inner_t.sku, inner_t.last_price,
+                    CASE WHEN inner_t.prior_price IS NULL OR inner_t.prior_price = 0 THEN NULL
+                         ELSE ((inner_t.last_price - inner_t.prior_price) / inner_t.prior_price) * 100
+                    END AS change_pct
+               FROM (
+                 SELECT t1.sku,
+                        (SELECT price::numeric FROM market_trades t2
+                          WHERE t2.sku = t1.sku AND t2.escrow_status <> 'cancelled'
+                          ORDER BY created_at DESC LIMIT 1) AS last_price,
+                        (SELECT price::numeric FROM market_trades t2
+                          WHERE t2.sku = t1.sku AND t2.escrow_status <> 'cancelled'
+                            AND created_at <= NOW() - INTERVAL '24 hours'
+                          ORDER BY created_at DESC LIMIT 1) AS prior_price
+                   FROM market_trades t1
+                  WHERE t1.created_at > NOW() - INTERVAL '24 hours'
+                    AND t1.escrow_status <> 'cancelled'
+                  GROUP BY t1.sku
+               ) inner_t
+           ) x
+          WHERE x.change_pct IS NOT NULL
+          ORDER BY ABS(x.change_pct) DESC
+          LIMIT ${LIMIT}
        ) m
-       LEFT JOIN card_meta cm ON cm.sku = t.sku
-      WHERE m.change_pct IS NOT NULL
-      ORDER BY ABS(m.change_pct) DESC
-      LIMIT ${LIMIT}
+       LEFT JOIN card_meta cm ON cm.sku = m.sku
    `
   );
 

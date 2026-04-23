@@ -238,12 +238,20 @@ export default function MarketPage() {
               Buy and sell One Piece TCG cards. Every card has a market page.
             </p>
           </div>
-          <a
-            href="/market/pulse"
-            className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg text-sm text-amber-400 font-medium transition"
-          >
-            ⚡ Market Pulse
-          </a>
+          <div className="flex gap-2">
+            <a
+              href="/market/pulse"
+              className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg text-sm text-amber-400 font-medium transition"
+            >
+              ⚡ Market Pulse
+            </a>
+            <a
+              href="/leaderboards"
+              className="px-4 py-2 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded-lg text-sm text-emerald-400 font-medium transition"
+            >
+              🏆 Leaderboards
+            </a>
+          </div>
         </div>
 
         {/* ========== HERO BANNER — We Buy Every Card ========== */}
