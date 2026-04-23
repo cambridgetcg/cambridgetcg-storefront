@@ -90,6 +90,7 @@ export async function sendVaultExpiredEmail(args: VaultExpiredEmailArgs): Promis
     from: "bounty",
     subject: `Vault item auto-expired: £${args.soldBackCreditGbp.toFixed(2)} credit added`,
     html,
+    unsubscribe: { userId: args.userId, category: "vault_expired" },
   });
 }
 
@@ -175,6 +176,7 @@ export async function sendPullResolvedEmail(args: PullResolvedEmailArgs): Promis
     from: "bounty",
     subject: `${formatRarity(args.rolledRarity)} pulled — ${args.cardName}`,
     html,
+    unsubscribe: { userId: args.userId, category: "pull_resolved" },
   });
 }
 
@@ -257,5 +259,6 @@ export async function sendVaultRedeemedEmail(args: VaultRedeemedEmailArgs): Prom
     from: "bounty",
     subject: `Shipped: ${args.cardName}${args.tracking ? ` (${args.tracking})` : ""}`,
     html,
+    unsubscribe: { userId: args.userId, category: "vault_redeemed" },
   });
 }
