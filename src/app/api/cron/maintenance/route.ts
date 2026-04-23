@@ -6,7 +6,9 @@ import { runPayoutSweep } from "@/lib/payouts/sweep";
 import { runAlertSweep } from "@/lib/market/watches";
 import { drainEmailQueue } from "@/lib/email/queue";
 import { runStreakAtRiskSweep } from "@/lib/email/streak-sweep";
+import { sendAdminWeeklyDigest } from "@/lib/email/admin-digest";
 import { runSellerRestockDigest, runBuyerWatchlistDigest } from "@/lib/market/digests";
+import { runLiquidityMining } from "@/lib/market/liquidity";
 
 // Vercel cron hits this route on the schedule defined in vercel.json. We
 // accept the request only when CRON_SECRET is set and the Bearer token
@@ -33,6 +35,10 @@ export async function GET(request: Request) {
   const now = new Date();
   const runStreakSweep =
     now.getUTCHours() === 20 && now.getUTCMinutes() < 2;
+  // Admin digest — Monday 09:00 UTC, one 2-minute window. Doesn't use the
+  // email_queue; sends synchronously via SES.
+  const runDigest =
+    now.getUTCDay() === 1 && now.getUTCHours() === 9 && now.getUTCMinutes() < 2;
 
   const results = await Promise.allSettled([
     runMarketMaintenance(),
@@ -45,9 +51,10 @@ export async function GET(request: Request) {
     // Weekly digests — self-gate to Monday 09:00 UTC + atomic digest_runs claim.
     runSellerRestockDigest(),
     runBuyerWatchlistDigest(),
+    runDigest ? sendAdminWeeklyDigest() : Promise.resolve(null),
   ]);
 
-  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest] = results;
+  const [market, auctions, bounty, payouts, alerts, emails, streakSweep, restockDigest, watchlistDigest, adminDigest] = results;
 
   const status = {
     market: market.status,
@@ -82,6 +89,12 @@ export async function GET(request: Request) {
       watchlistDigest.status === "fulfilled"
         ? (watchlistDigest.value.skipped ? { status: "skipped" } : { status: "fulfilled", sent: watchlistDigest.value.sent })
         : { status: "rejected" },
+    adminDigest:
+      adminDigest.status === "fulfilled" && adminDigest.value != null
+        ? { status: "fulfilled", sent: adminDigest.value.ok, error: adminDigest.value.ok ? null : adminDigest.value.error }
+        : adminDigest.status === "rejected"
+          ? { status: "rejected" }
+          : { status: "skipped" },
     durationMs: Date.now() - start,
   };
 
