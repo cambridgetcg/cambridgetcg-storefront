@@ -82,9 +82,28 @@ const DIFFICULTY_NODE_BG: Record<string, string> = {
 /*  Adventure Mode — Level Select                                      */
 /* ================================================================== */
 
+interface EarnMultipliers {
+  tierMultiplier: number;
+  streakMultiplier: number;
+  currentStreak: number;
+  clearsTodayByLevel: Record<string, number>;
+  eligible: boolean;
+}
+
+// Same diminishing curve as src/lib/bounty/earn.ts — mirrored here for
+// the pre-play preview so we don't have to round-trip to the server for
+// every level card render.
+function dailyMultiplier(nth: number): number {
+  if (nth <= 0) return 1.0;
+  if (nth === 1) return 0.5;
+  if (nth === 2) return 0.25;
+  return 0.10;
+}
+
 export default function AdventureModePage() {
   const router = useRouter();
   const [data, setData] = useState<PVEData | null>(null);
+  const [mult, setMult] = useState<EarnMultipliers | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedLevel, setExpandedLevel] = useState<string | null>(null);
@@ -97,18 +116,25 @@ export default function AdventureModePage() {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
-  /* ---- Fetch levels ---- */
+  /* ---- Fetch levels + earn multipliers ---- */
   const fetchLevels = useCallback(async () => {
     try {
-      const res = await fetch("/api/game/pve");
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
+      const [levelsRes, multRes] = await Promise.all([
+        fetch("/api/game/pve"),
+        fetch("/api/bounty/earn-multipliers"),
+      ]);
+      if (!levelsRes.ok) {
+        const d = await levelsRes.json().catch(() => ({}));
         setError(d.error || "Failed to load adventure data.");
         return;
       }
-      const json: PVEData = await res.json();
+      const json: PVEData = await levelsRes.json();
       setData(json);
       setError(null);
+      if (multRes.ok) {
+        const m: EarnMultipliers = await multRes.json();
+        setMult(m);
+      }
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -255,6 +281,26 @@ export default function AdventureModePage() {
       {/* ---- Level Map + Cards ---- */}
       {data && !loading && (
         <div className="mx-auto max-w-5xl px-4 py-10 space-y-10">
+
+          {/* ---- Multiplier strip (live) ---- */}
+          {mult?.eligible && (mult.tierMultiplier > 1 || mult.streakMultiplier > 1) && (
+            <section className="bg-gradient-to-r from-amber-500/10 via-neutral-900 to-fuchsia-500/10 border border-amber-500/20 rounded-xl px-5 py-3 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">Your multiplier right now</p>
+                <p className="text-xl font-extrabold mt-0.5">
+                  {(mult.tierMultiplier * mult.streakMultiplier).toFixed(2)}×
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-neutral-400 font-mono">
+                {mult.tierMultiplier > 1 && (
+                  <span><span className="text-purple-400">{mult.tierMultiplier.toFixed(2)}×</span> tier</span>
+                )}
+                {mult.streakMultiplier > 1 && (
+                  <span><span className="text-orange-400">{mult.streakMultiplier.toFixed(2)}×</span> {mult.currentStreak}-day streak</span>
+                )}
+              </div>
+            </section>
+          )}
 
           {/* ---- Visual Level Map ---- */}
           <section className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 sm:p-6 overflow-hidden">
@@ -468,6 +514,31 @@ export default function AdventureModePage() {
                             Repeat: {level.repeat_points} Berries
                           </span>
                         </div>
+
+                        {/* Expected-earn preview — what you'd actually get if you cleared this NOW */}
+                        {mult?.eligible && !isLocked && (() => {
+                          const clearsToday = mult.clearsTodayByLevel[String(level.id)] ?? 0;
+                          // If they've never first-cleared, next clear is a first — full first_clear_points at 1.0 daily.
+                          const isNextFirstClear = !isCleared;
+                          const base = isNextFirstClear ? level.first_clear_points : level.repeat_points;
+                          const daily = isNextFirstClear ? 1.0 : dailyMultiplier(clearsToday);
+                          const expected = Math.max(0, Math.floor(base * daily * mult.streakMultiplier * mult.tierMultiplier));
+                          return (
+                            <div className="pt-2 mt-1 border-t border-neutral-700/40 flex items-center gap-2 text-sm">
+                              <span className="text-neutral-600">▸</span>
+                              <span className="text-neutral-400">If you clear now:</span>
+                              <span className="text-amber-400 font-bold">+{expected} Berries</span>
+                              {(daily < 1 || mult.streakMultiplier > 1 || mult.tierMultiplier > 1) && (
+                                <span className="text-[10px] text-neutral-600 font-mono ml-auto">
+                                  {base}
+                                  {daily < 1 && <span className="text-red-400"> ×{Math.round(daily * 100)}%</span>}
+                                  {mult.streakMultiplier > 1 && <span className="text-orange-400"> ×{mult.streakMultiplier.toFixed(2)}</span>}
+                                  {mult.tierMultiplier > 1 && <span className="text-purple-400"> ×{mult.tierMultiplier.toFixed(2)}</span>}
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
 
                       {/* Progress stats */}
