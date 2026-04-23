@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import WishlistCsvImport, { type ParsedWishRow } from "@/components/wishlist/CsvImport";
 
 interface WishlistItem {
   id: string;
@@ -46,6 +47,7 @@ export default function WishlistPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [showCsv, setShowCsv] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -160,12 +162,20 @@ export default function WishlistPage() {
               Cards you&apos;re hunting. We&apos;ll email you when one appears at your max price on the P2P market or in-store stock.
             </p>
           </div>
-          <Link
-            href="/account/profile"
-            className="bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg px-4 py-2 text-sm transition-colors"
-          >
-            + Add from profile
-          </Link>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowCsv(true)}
+              className="bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white font-medium rounded-lg px-4 py-2 text-sm transition-colors"
+            >
+              Import CSV
+            </button>
+            <Link
+              href="/account/profile"
+              className="bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg px-4 py-2 text-sm transition-colors"
+            >
+              + Add from profile
+            </Link>
+          </div>
         </div>
 
         {error && (
@@ -354,6 +364,63 @@ export default function WishlistPage() {
           </div>
         )}
       </div>
+
+      {showCsv && (
+        <WishlistCsvImport
+          onClose={() => setShowCsv(false)}
+          onImport={async (rows: ParsedWishRow[]) => {
+            const failed: string[] = [];
+            let added = 0;
+
+            // Resolve each SKU via the catalog search so we can store a
+            // full card snapshot, then POST to /api/social/wishlist which
+            // upserts on (user_id, sku).
+            const resolved = await Promise.all(
+              rows.map(async (r) => {
+                try {
+                  const res = await fetch(
+                    `/api/portfolio/search?q=${encodeURIComponent(r.sku)}`,
+                  );
+                  if (!res.ok) return { row: r, card: null };
+                  const d = await res.json();
+                  const results = (d.results as Array<{
+                    sku: string; card_name: string; card_number: string;
+                    set_code: string; set_name: string; image_url: string | null;
+                  }>) ?? [];
+                  const exact = results.find((c) => c.sku.toUpperCase() === r.sku);
+                  return { row: r, card: exact ?? results[0] ?? null };
+                } catch { return { row: r, card: null }; }
+              }),
+            );
+
+            for (const { row, card } of resolved) {
+              if (!card) { failed.push(row.sku); continue; }
+              try {
+                const res = await fetch("/api/social/wishlist", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    sku: card.sku,
+                    cardName: card.card_name,
+                    cardNumber: card.card_number,
+                    setCode: card.set_code,
+                    setName: card.set_name,
+                    imageUrl: card.image_url,
+                    maxPrice: row.maxPrice,
+                    conditionMin: row.conditionMin,
+                    notes: row.notes,
+                  }),
+                });
+                if (res.ok) added += 1;
+                else failed.push(row.sku);
+              } catch { failed.push(row.sku); }
+            }
+
+            await load();
+            return { added, failed };
+          }}
+        />
+      )}
     </main>
   );
 }
