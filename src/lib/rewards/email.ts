@@ -27,6 +27,32 @@ function tpl(title: string, body: string, ctaText: string, ctaUrl: string): stri
 </body></html>`;
 }
 
+export async function sendPrizeShippedEmail(d: {
+  email: string;
+  name: string | null;
+  prizeLabel: string;
+  trackingNumber: string | null;
+}): Promise<void> {
+  const url = `${SITE}/account/rewards`;
+  const tracking = d.trackingNumber
+    ? `Tracking: <strong style="font-family:monospace;">${d.trackingNumber}</strong>`
+    : "It's on its way without a tracking number — keep an eye on your post.";
+  const subject = `Shipped: ${d.prizeLabel}`;
+  const text = `Your prize "${d.prizeLabel}" has shipped.${d.trackingNumber ? ` Tracking: ${d.trackingNumber}` : ""}. ${url}`;
+  const html = tpl(
+    "Your prize is on the way",
+    `<p>${d.name ? `Hi ${d.name}, ` : ""}we just shipped <strong>${d.prizeLabel}</strong>.</p>
+     <p>${tracking}</p>`,
+    "View prize",
+    url,
+  );
+  await ses.send(new SendEmailCommand({
+    Source: FROM,
+    Destination: { ToAddresses: [d.email] },
+    Message: { Subject: { Data: subject }, Body: { Text: { Data: text }, Html: { Data: html } } },
+  }));
+}
+
 export async function sendRaffleWinnerEmail(d: {
   email: string;
   name: string | null;

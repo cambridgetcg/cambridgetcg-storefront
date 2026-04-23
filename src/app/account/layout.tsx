@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: "/account/watchlist", label: "Watchlist" },
   { href: "/account/demand", label: "Demand Signals" },
   { href: "/account/payouts", label: "Payouts" },
+  { href: "/account/rewards", label: "Prizes" },
   { href: "/account/verify", label: "Verification" },
   { href: "/account/trust", label: "Trust Score" },
   { href: "/account/membership", label: "Membership" },
