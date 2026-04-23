@@ -467,6 +467,10 @@ export default function CardMarketPage() {
   // Watchlist
   const [watching, setWatching] = useState<boolean | null>(null);
   const [watchToggling, setWatchToggling] = useState(false);
+  const [related, setRelated] = useState<Array<{
+    sku: string; cardName: string | null; imageUrl: string | null;
+    bestAsk: number | null; coWatchCount: number;
+  }>>([]);
 
   // Price alert form
   const [alertOpen, setAlertOpen] = useState(false);
@@ -508,6 +512,14 @@ export default function CardMarketPage() {
     fetch(`/api/market/${sku}/candles?interval=1d&limit=30`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d) setAnalytics({ sparkline: d.sparkline, lastPrice: d.lastPrice, change24hPct: d.change24hPct }); })
+      .catch(() => {});
+  }, [sku]);
+
+  // Co-watch recommendations — also fetched once.
+  useEffect(() => {
+    fetch(`/api/market/${sku}/related?limit=8`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setRelated(d.related || []); })
       .catch(() => {});
   }, [sku]);
 
@@ -1129,6 +1141,42 @@ export default function CardMarketPage() {
             </div>
           )}
         </div>
+
+        {related.length > 0 && (
+          <div className="mt-8 bg-neutral-900 rounded-xl p-4">
+            <h2 className="text-sm font-bold text-white mb-4">
+              Also watched by buyers of this card
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+              {related.map((r) => (
+                <Link
+                  key={r.sku}
+                  href={`/market/${r.sku}`}
+                  className="group block"
+                >
+                  <div className="aspect-[2.5/3.5] bg-neutral-800 rounded-lg overflow-hidden mb-2">
+                    {r.imageUrl ? (
+                      <img src={r.imageUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-neutral-600 text-xs">
+                        No image
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-white truncate group-hover:text-amber-400 transition">
+                    {r.cardName || r.sku}
+                  </p>
+                  <div className="flex items-center justify-between text-[10px] text-neutral-500 mt-0.5">
+                    <span>{r.coWatchCount} watchers</span>
+                    {r.bestAsk !== null && (
+                      <span className="text-red-400">{formatPrice(r.bestAsk)}</span>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
