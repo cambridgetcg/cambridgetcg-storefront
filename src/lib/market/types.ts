@@ -68,6 +68,7 @@ export interface MarketTrade {
   buyer_email?: string;
   seller_name?: string | null;
   seller_email?: string;
+  seller_username?: string | null;
   card_name?: string | null;
   image_url?: string | null;
 }

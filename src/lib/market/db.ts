@@ -328,9 +328,11 @@ export async function getCardOrderBook(sku: string): Promise<CardOrderBook> {
     [sku]
   );
 
-  // Recent trades
+  // Recent trades — include seller's username so the detail page can link
+  // trades back to the seller profile for reputation surfacing.
   const tradesResult = await query(
-    `SELECT t.*, bu.name as buyer_name, su.name as seller_name
+    `SELECT t.*, bu.name as buyer_name, su.name as seller_name,
+            su.username as seller_username
      FROM market_trades t
      LEFT JOIN users bu ON t.buyer_id = bu.id
      LEFT JOIN users su ON t.seller_id = su.id

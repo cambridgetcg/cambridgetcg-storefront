@@ -51,8 +51,26 @@ export default function UserProfilePage() {
   const [isPrivate, setIsPrivate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [followLoading, setFollowLoading] = useState(false);
+  const [commerce, setCommerce] = useState<{
+    tradesSold: number;
+    tradesBought: number;
+    auctionsSold: number;
+    totalVolumeGbp: number;
+    disputeRate: number;
+    disputes: number;
+    trustScore: number;
+    trustTier: { name: string; color: string; minScore: number };
+    memberSince: string;
+  } | null>(null);
 
   useEffect(() => {
+    // Commerce stats are public and username-keyed; fetched in parallel with
+    // the social profile. Failure is silent — card just won't render.
+    fetch(`/api/u/${encodeURIComponent(username)}/commerce`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && !d.error) setCommerce(d); })
+      .catch(() => {});
+
     fetch(`/api/social/profile?user=${encodeURIComponent(username)}`)
       .then((r) => r.json())
       .then((data) => {
@@ -196,6 +214,54 @@ export default function UserProfilePage() {
             </div>
           ))}
         </div>
+
+        {/* Seller reputation — only rendered when there's commerce activity */}
+        {commerce && (commerce.tradesSold > 0 || commerce.auctionsSold > 0 || commerce.tradesBought > 0) && (
+          <section className="bg-neutral-900 rounded-xl p-5 mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-sm font-bold text-white uppercase tracking-wide">Seller Reputation</h2>
+              <span
+                className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                  {
+                    purple: "bg-purple-500/15 text-purple-400 border-purple-500/30",
+                    amber:  "bg-amber-500/15 text-amber-400 border-amber-500/30",
+                    emerald:"bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+                    blue:   "bg-blue-500/15 text-blue-400 border-blue-500/30",
+                    neutral:"bg-neutral-500/15 text-neutral-300 border-neutral-500/30",
+                  }[commerce.trustTier.color] ?? "bg-neutral-500/15 text-neutral-300 border-neutral-500/30"
+                }`}
+              >
+                {commerce.trustTier.name}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div>
+                <div className="text-lg font-bold text-white">{commerce.tradesSold}</div>
+                <div className="text-[11px] text-neutral-500">sold (trades)</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold text-white">{commerce.auctionsSold}</div>
+                <div className="text-[11px] text-neutral-500">sold (auctions)</div>
+              </div>
+              <div>
+                <div className="text-lg font-bold text-white">£{commerce.totalVolumeGbp.toFixed(2)}</div>
+                <div className="text-[11px] text-neutral-500">total paid out</div>
+              </div>
+              <div>
+                <div className={`text-lg font-bold ${commerce.disputeRate > 5 ? "text-amber-400" : commerce.disputeRate > 0 ? "text-neutral-300" : "text-emerald-400"}`}>
+                  {commerce.disputeRate.toFixed(1)}%
+                </div>
+                <div className="text-[11px] text-neutral-500">
+                  dispute rate {commerce.disputes > 0 ? `(${commerce.disputes})` : ""}
+                </div>
+              </div>
+            </div>
+            <p className="text-[11px] text-neutral-500 mt-3">
+              Member since {new Date(commerce.memberSince).toLocaleDateString("en-GB", { month: "short", year: "numeric" })}.
+              Trust tiers and escrow thresholds determine which trades need photo review or full inspection.
+            </p>
+          </section>
+        )}
 
         {/* Showcase */}
         {showcase.length > 0 && (

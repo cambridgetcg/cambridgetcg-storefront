@@ -967,6 +967,7 @@ export default function CardMarketPage() {
                   <tr className="text-neutral-500 text-xs uppercase tracking-wide border-b border-neutral-800">
                     <th className="text-left py-2 font-medium">Price</th>
                     <th className="text-left py-2 font-medium">Quantity</th>
+                    <th className="text-left py-2 font-medium">Seller</th>
                     <th className="text-right py-2 font-medium">Time</th>
                   </tr>
                 </thead>
@@ -977,6 +978,18 @@ export default function CardMarketPage() {
                         {formatPrice(Number(trade.price))}
                       </td>
                       <td className="py-2 text-neutral-300">{trade.quantity}</td>
+                      <td className="py-2 text-neutral-400 text-xs">
+                        {trade.seller_username ? (
+                          <Link
+                            href={`/u/${trade.seller_username}`}
+                            className="text-amber-400 hover:underline"
+                          >
+                            {trade.seller_name || trade.seller_username}
+                          </Link>
+                        ) : (
+                          <span className="text-neutral-500">—</span>
+                        )}
+                      </td>
                       <td className="py-2 text-neutral-500 text-right text-xs">
                         {formatTime(trade.created_at)}
                       </td>
