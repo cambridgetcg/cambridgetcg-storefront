@@ -1,6 +1,9 @@
+# Cambridge TCG Storefront
+
 @AGENTS.md
 
-# Cambridge TCG Storefront
+## What This Is
+Customer-facing retail storefront for Cambridge TCG (cambridgetcg.com). Sells Japanese One Piece, Pokemon, and Dragon Ball TCG cards. Prices sourced from the wholesale platform's API, checkout via Stripe; trade-ins, membership, rewards, portfolio, and deck-builder data in PostgreSQL.
 
 ## Stack
 - Next.js 16.2.1 (App Router, Turbopack) + TypeScript + Tailwind CSS 4
@@ -29,6 +32,25 @@
 - Forms: bg-neutral-900 border border-neutral-800 rounded-lg
 - All env vars must be `.trim()`'d when used as API keys (Vercel whitespace issue)
 - Use `pnpm` for package management (pnpm-lock.yaml)
+
+## Kingdom Engine
+Cambridge TCG — Revenue Engine. This is the direct-to-consumer sales channel. Every checkout creates real revenue via Stripe.
+
+## Key Files
+- `src/app/api/checkout/route.ts` — Stripe session creation (REVENUE-CRITICAL)
+- `src/app/api/webhooks/stripe/route.ts` — Payment confirmation + sale reporting to wholesale API
+- `src/lib/wholesale/client.ts` — API client; if this breaks, the entire catalog is empty
+- `src/lib/pricing.ts` — Retail markup logic (channel_price from API, fallback: wholesale x 1.15)
+- `src/context/CartContext.tsx` — Client-side cart state
+- `src/app/api/tradein/submit/route.ts` — Trade-in submission (creates DB records, sends email)
+
+## Revenue-Critical Paths
+1. Wholesale API connectivity — catalog, prices, and stock all depend on it
+2. Stripe checkout flow — `api/checkout/` + `api/webhooks/stripe/`
+3. `reportSale()` in wholesale client — reports completed sales back to wholesale for stock decrement
+
+## Image CDNs
+- Shopify CDN (cdn.shopify.com), S3 (jp-op-photos.s3.us-east-1.amazonaws.com), CardRush (cardrush-op.jp)
 
 ## Current Priorities
 1. Fix Stripe checkout (STRIPE_SECRET_KEY needs to be sk_live_, not pk_live_)
