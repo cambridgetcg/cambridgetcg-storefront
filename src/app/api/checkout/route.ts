@@ -4,6 +4,7 @@ import type { CartItem } from "@/lib/cart";
 import { auth } from "@/lib/auth";
 import { getUserPerks } from "@/lib/membership/db";
 import { query } from "@/lib/db";
+import { fetchCard } from "@/lib/wholesale/client";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!.trim(), {
   apiVersion: "2026-02-25.clover",
@@ -24,6 +25,19 @@ export async function POST(request: Request) {
     for (const item of items) {
       if (!item.sku || !item.price || item.price <= 0 || !item.quantity || item.quantity <= 0) {
         return NextResponse.json({ error: "Invalid item in cart" }, { status: 400 });
+      }
+    }
+
+    // Stock guard — verify availability before any Stripe work so we
+    // never sell what the wholesale side can't fulfil.
+    for (const item of items) {
+      const card = await fetchCard(item.sku);
+      const available = card?.stock ?? 0;
+      if (!card || available < item.quantity) {
+        return NextResponse.json(
+          { error: "insufficient_stock", sku: item.sku, available },
+          { status: 409 }
+        );
       }
     }
 
