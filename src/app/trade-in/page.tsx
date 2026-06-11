@@ -19,6 +19,7 @@ export interface BuylistItem {
   set_code: string | null;
   set_name: string | null;
   rarity: string | null;
+  category: string | null;
   image_url: string | null;
   cash_price: number;
   credit_price: number;
@@ -27,22 +28,19 @@ export interface BuylistItem {
   credit_want: number;
 }
 
-// Fetch all pages from the wholesale API (it caps at 500 per request)
+// Fetch all pages from the wholesale API (it caps at 500 per request).
+// First page reveals the total; the rest fan out in parallel — pokemon's
+// ~7k rows would otherwise be 15 sequential round-trips on a cold cache.
 async function fetchAllPrices(params: Parameters<typeof fetchPrices>[0]) {
-  const allItems: PriceItem[] = [];
-  let offset = 0;
   const pageSize = 500;
-  let total = Infinity;
-
-  while (offset < total) {
-    const res = await fetchPrices({ ...params, limit: pageSize, offset });
-    allItems.push(...res.items);
-    total = res.total;
-    offset += pageSize;
-    if (res.items.length < pageSize) break; // No more pages
-  }
-
-  return allItems;
+  const first = await fetchPrices({ ...params, limit: pageSize, offset: 0 });
+  const remainingPages = Math.max(0, Math.ceil(first.total / pageSize) - 1);
+  const rest = await Promise.all(
+    Array.from({ length: remainingPages }, (_, i) =>
+      fetchPrices({ ...params, limit: pageSize, offset: (i + 1) * pageSize })
+    )
+  );
+  return [first, ...rest].flatMap((r) => r.items);
 }
 
 export default async function TradeInPage({
@@ -94,6 +92,7 @@ export default async function TradeInPage({
         set_code: card.set_code,
         set_name: card.set_name,
         rarity: card.rarity,
+        category: card.category,
         image_url: card.image_url,
         cash_price: cashPrice,
         credit_price: creditPrice,
@@ -104,12 +103,18 @@ export default async function TradeInPage({
     })
     .filter((item) => item.credit_price > 0 || item.cash_price > 0)
     .filter((item) => {
-      // Exclude plain commons/uncommons/rares — keep SR, SEC, SP, L,
-      // parallels, alt arts, promos. Exact match only, so parallel
-      // variants (R/P, UC☆ etc.) survive. "U" is Pokémon's uncommon.
+      // Buylist carries premium rarities, parallels, and sealed product —
+      // not plain commons/uncommons/rares. Exact match only, so suffix
+      // parallels (R/P, UC☆) survive. "U" is Pokémon's uncommon. Sealed
+      // items have null rarity and must not fall through to the exclusion.
+      // Pokémon encodes premium parallels (Master Ball mirrors, spec
+      // variants) as rarity "-", so "-"/empty is excluded only for One
+      // Piece, matching its pre-existing buylist behavior.
+      if (item.category === "sealed") return true;
       const r = (item.rarity ?? "").toUpperCase().trim();
-      const EXCLUDED = new Set(["C", "UC", "U", "R", "-", ""]);
-      return !EXCLUDED.has(r);
+      if (new Set(["C", "UC", "U", "R"]).has(r)) return false;
+      if ((r === "-" || r === "") && game === "one-piece") return false;
+      return true;
     });
 
   // Stats for hero

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { fetchCard } from "@/lib/wholesale/client";
-import { isTradeinGame } from "@/lib/tradein/games";
+import { isTradeinGame, gameFromSku } from "@/lib/tradein/games";
 import { generateReference, createSubmission } from "@/lib/tradein/db";
+
+// Price revalidation fans out per-SKU lookups; give large carts headroom
+// beyond the default serverless timeout.
+export const maxDuration = 60;
 import { sendConfirmationEmail } from "@/lib/tradein/email";
 import { auth } from "@/lib/auth";
 import { awardAchievement } from "@/lib/social/db";
@@ -101,8 +105,10 @@ export async function POST(request: Request) {
       if (!item.sku || !item.quantity || item.quantity <= 0) {
         return NextResponse.json({ error: "Invalid item in submission." }, { status: 400 });
       }
-      // Carts created before multi-game support carry no game field
-      item.game = item.game || "one-piece";
+      // Derive game server-side from the prefix-typed SKU rather than
+      // trusting the client; SEALED- SKUs span games, so fall back to the
+      // client value there (legacy carts carry none → one-piece).
+      item.game = gameFromSku(item.sku) ?? item.game ?? "one-piece";
       if (!isTradeinGame(item.game)) {
         return NextResponse.json({ error: "Invalid game in submission." }, { status: 400 });
       }
@@ -114,7 +120,7 @@ export async function POST(request: Request) {
     const skus = [...new Set(body.items.map((i) => i.sku))];
     const currentCreditMap = new Map<string, number>();
     const currentCashMap = new Map<string, number>();
-    const CHUNK = 8;
+    const CHUNK = 25;
     for (let i = 0; i < skus.length; i += CHUNK) {
       await Promise.all(
         skus.slice(i, i + CHUNK).map(async (sku) => {
@@ -200,6 +206,7 @@ export async function POST(request: Request) {
         deliveryMethod: body.deliveryMethod,
         items: body.items.map((i) => ({
           name: i.name,
+          game: i.game || "one-piece",
           card_number: i.card_number,
           quantity: i.quantity,
           cash_price: i.cash_price,
