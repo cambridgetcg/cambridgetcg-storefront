@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 interface PayoutStatus {
@@ -47,6 +47,15 @@ const STATUS_COPY: Record<string, { badge: string; className: string; detail: st
 };
 
 export default function PayoutsPage() {
+  // useSearchParams() requires a Suspense boundary at static-generation time
+  return (
+    <Suspense fallback={null}>
+      <PayoutsContent />
+    </Suspense>
+  );
+}
+
+function PayoutsContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<PayoutStatus | null>(null);
   const [pending, setPending] = useState<{ trades: PendingPayout[]; auctions: PendingPayout[]; totalOwedFormatted: string } | null>(null);
