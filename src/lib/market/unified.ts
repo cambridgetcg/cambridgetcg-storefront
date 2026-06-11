@@ -18,7 +18,7 @@
 //   tightened prices are an indicative market-making signal. A future pass
 //   will honor the displayed bid when the user locks it at submission time.
 
-import { fetchCard, fetchPrices } from "@/lib/wholesale/client";
+import { fetchCard } from "@/lib/wholesale/client";
 import { retailPrice } from "@/lib/pricing";
 import { getCardOrderBook } from "./db";
 import { query } from "@/lib/db";
@@ -120,26 +120,19 @@ export interface UnifiedMarketView {
 }
 
 export async function getUnifiedMarketView(sku: string): Promise<UnifiedMarketView> {
-  // Derive set_code from SKU (e.g. "OP-OP01-025-JP-V11D5" → "OP01", "EB-EB01-006-JP-VZSK" → "EB01")
-  const skuParts = sku.split("-");
-  const setCode = skuParts.length >= 2 ? skuParts[1] : undefined;
-
-  const [card, orderBook, tradeinCreditRes, tradeinCashRes, pressure] = await Promise.all([
+  const [card, orderBook, tradeinCreditItem, tradeinCashItem, pressure] = await Promise.all([
     fetchCard(sku).catch(() => null),
     getCardOrderBook(sku),
-    // Use batch fetchPrices instead of fetchCard for trade-in channels
-    // (individual SKU lookup may not support trade-in channels)
-    setCode ? fetchPrices({ game: "one-piece", set: setCode, channel: "tradein-credit", limit: 500 }).catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
-    setCode ? fetchPrices({ game: "one-piece", set: setCode, channel: "tradein-cash", limit: 500 }).catch(() => ({ items: [] })) : Promise.resolve({ items: [] }),
+    // Per-SKU lookup works on trade-in channels for every game — no game
+    // param needed, SKUs are globally unique.
+    fetchCard(sku, "tradein-credit").catch(() => null),
+    fetchCard(sku, "tradein-cash").catch(() => null),
     computeDemandPressure(sku),
   ]);
 
   // Actual tightening percentage used for THIS view. Capped at MAX_TIGHTEN_PCT.
   const tightenPct = Math.min(pressure.pressure, 1) * MAX_TIGHTEN_PCT;
 
-  // Find this specific SKU in the trade-in results
-  const tradeinCreditItem = tradeinCreditRes.items.find(i => i.sku === sku);
-  const tradeinCashItem = tradeinCashRes.items.find(i => i.sku === sku);
   const tradeinCredit = tradeinCreditItem?.channel_price ?? null;
   const tradeinCash = tradeinCashItem?.channel_price ?? null;
   const spotPrice = card ? retailPrice(card.price_gbp, card.channel_price) : null;

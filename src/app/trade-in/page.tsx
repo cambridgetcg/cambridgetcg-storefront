@@ -1,5 +1,6 @@
 import { fetchPrices, type PriceItem } from "@/lib/wholesale/client";
 import { formatPrice } from "@/lib/format";
+import { TRADEIN_GAMES, isTradeinGame } from "@/lib/tradein/games";
 import BuylistTable from "@/components/tradein/BuylistTable";
 import SellCartBar from "@/components/tradein/SellCartBar";
 import Link from "next/link";
@@ -7,11 +8,12 @@ import Link from "next/link";
 export const metadata = {
   title: "Trade In Your Cards — Cambridge TCG",
   description:
-    "Sell your trading cards for cash or store credit. Competitive prices, fast payouts. Near Mint cards accepted.",
+    "Sell your One Piece, Pokémon, and Dragon Ball cards for cash or store credit. Competitive prices, fast payouts. Near Mint cards accepted.",
 };
 
 export interface BuylistItem {
   sku: string;
+  game: string;
   card_number: string;
   name: string;
   set_code: string | null;
@@ -43,12 +45,19 @@ async function fetchAllPrices(params: Parameters<typeof fetchPrices>[0]) {
   return allItems;
 }
 
-export default async function TradeInPage() {
+export default async function TradeInPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ game?: string }>;
+}) {
+  const params = await searchParams;
+  const game = params.game && isTradeinGame(params.game) ? params.game : "one-piece";
+
   // Fetch from ALL three channels, paginated to get every card
   const [catalogItems, creditItems, cashItems] = await Promise.all([
-    fetchAllPrices({ game: "one-piece", channel: "cambridgetcg" }),
-    fetchAllPrices({ game: "one-piece", channel: "tradein-credit" }),
-    fetchAllPrices({ game: "one-piece", channel: "tradein-cash" }),
+    fetchAllPrices({ game, channel: "cambridgetcg" }),
+    fetchAllPrices({ game, channel: "tradein-credit" }),
+    fetchAllPrices({ game, channel: "tradein-cash" }),
   ]);
 
   // Build lookups by SKU
@@ -79,6 +88,7 @@ export default async function TradeInPage() {
 
       return {
         sku: card.sku,
+        game,
         card_number: card.card_number,
         name: card.name_en || card.name || card.card_number,
         set_code: card.set_code,
@@ -94,9 +104,11 @@ export default async function TradeInPage() {
     })
     .filter((item) => item.credit_price > 0 || item.cash_price > 0)
     .filter((item) => {
-      // Exclude C, UC, and R — keep SR, SEC, SP, L, parallels, alt arts, promos
+      // Exclude plain commons/uncommons/rares — keep SR, SEC, SP, L,
+      // parallels, alt arts, promos. Exact match only, so parallel
+      // variants (R/P, UC☆ etc.) survive. "U" is Pokémon's uncommon.
       const r = (item.rarity ?? "").toUpperCase().trim();
-      const EXCLUDED = new Set(["C", "UC", "R", "-", ""]);
+      const EXCLUDED = new Set(["C", "UC", "U", "R", "-", ""]);
       return !EXCLUDED.has(r);
     });
 
@@ -225,7 +237,23 @@ export default async function TradeInPage() {
 
       {/* Buylist */}
       <section className="max-w-7xl mx-auto px-4 py-8">
-        <BuylistTable buylist={buylist} />
+        {/* Game tabs */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          {TRADEIN_GAMES.map((g) => (
+            <Link
+              key={g.slug}
+              href={g.slug === "one-piece" ? "/trade-in" : `/trade-in?game=${g.slug}`}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                game === g.slug
+                  ? "bg-amber-500 text-black"
+                  : "bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white"
+              }`}
+            >
+              {g.label}
+            </Link>
+          ))}
+        </div>
+        <BuylistTable buylist={buylist} game={game} />
       </section>
 
       {/* Floating sell cart bar */}

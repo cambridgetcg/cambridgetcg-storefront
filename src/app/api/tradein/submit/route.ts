@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { fetchPrices } from "@/lib/wholesale/client";
+import { fetchCard } from "@/lib/wholesale/client";
+import { isTradeinGame } from "@/lib/tradein/games";
 import { generateReference, createSubmission } from "@/lib/tradein/db";
 import { sendConfirmationEmail } from "@/lib/tradein/email";
 import { auth } from "@/lib/auth";
@@ -32,6 +33,7 @@ setInterval(() => {
 
 interface SubmitItem {
   sku: string;
+  game?: string;
   card_number: string;
   name: string;
   set_code: string | null;
@@ -92,25 +94,38 @@ export async function POST(request: Request) {
     }
 
     // Validate individual items
+    if (body.items.length > 100) {
+      return NextResponse.json({ error: "Too many items in one submission." }, { status: 400 });
+    }
     for (const item of body.items) {
       if (!item.sku || !item.quantity || item.quantity <= 0) {
         return NextResponse.json({ error: "Invalid item in submission." }, { status: 400 });
       }
+      // Carts created before multi-game support carry no game field
+      item.game = item.game || "one-piece";
+      if (!isTradeinGame(item.game)) {
+        return NextResponse.json({ error: "Invalid game in submission." }, { status: 400 });
+      }
     }
 
-    // Re-validate prices against current buylist (allow 10% drift)
-    const [creditRes, cashRes] = await Promise.all([
-      fetchPrices({ game: "one-piece", channel: "tradein-credit", limit: 500 }),
-      fetchPrices({ game: "one-piece", channel: "tradein-cash", limit: 500 }),
-    ]);
-
+    // Re-validate prices against current buylist (allow 10% drift).
+    // Per-SKU lookups work for every game and avoid the wholesale API's
+    // 500-row page cap.
+    const skus = [...new Set(body.items.map((i) => i.sku))];
     const currentCreditMap = new Map<string, number>();
-    for (const item of creditRes.items) {
-      currentCreditMap.set(item.sku, item.channel_price ?? 0);
-    }
     const currentCashMap = new Map<string, number>();
-    for (const item of cashRes.items) {
-      currentCashMap.set(item.sku, item.channel_price ?? 0);
+    const CHUNK = 8;
+    for (let i = 0; i < skus.length; i += CHUNK) {
+      await Promise.all(
+        skus.slice(i, i + CHUNK).map(async (sku) => {
+          const [credit, cash] = await Promise.all([
+            fetchCard(sku, "tradein-credit").catch(() => null),
+            fetchCard(sku, "tradein-cash").catch(() => null),
+          ]);
+          currentCreditMap.set(sku, credit?.channel_price ?? 0);
+          currentCashMap.set(sku, cash?.channel_price ?? 0);
+        })
+      );
     }
 
     for (const item of body.items) {
