@@ -54,3 +54,9 @@ credentials.*
 api-keys.json
 *.pem
 *.key
+.sovereign-state.json
+sovereign.log
+
+# secrets / local state — never commit
+.sovereign-state.json
+sovereign.log
