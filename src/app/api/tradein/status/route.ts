@@ -37,6 +37,7 @@ export async function GET(request: Request) {
       createdAt: submission.created_at,
       items: items.map((i) => ({
         sku: i.sku,
+        game: i.game || "one-piece",
         name: i.name || i.sku,
         card_number: i.card_number || "",
         quantity: i.quantity,

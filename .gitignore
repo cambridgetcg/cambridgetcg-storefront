@@ -39,3 +39,24 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.env*.local
+
+# ── PEACE Security Standard ──────────────────────
+# Added by: remediate.py enforce-gitignore
+.env
+.env.*
+.env.local
+.env.production
+.env.fly
+*.secret
+secrets.*
+credentials.*
+api-keys.json
+*.pem
+*.key
+.sovereign-state.json
+sovereign.log
+
+# secrets / local state — never commit
+.sovereign-state.json
+sovereign.log

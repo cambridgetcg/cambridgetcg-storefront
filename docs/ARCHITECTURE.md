@@ -317,9 +317,9 @@ WHOLESALE_API_KEY=<channel-api-key-for-cambridge-tcg>
 NEXT_PUBLIC_SITE_URL=https://cambridgetcg.com
 
 # Stripe (checkout)
-STRIPE_SECRET_KEY=sk_live_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
+STRIPE_SECRET_KEY=<from credentials.py get stripe-live-secret>
+STRIPE_WEBHOOK_SECRET=<from credentials.py get stripe-webhook-secret>
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=<from credentials.py get stripe-live-publishable>
 ```
 
 **No `DATABASE_URL`. No Drizzle. No Postgres dependency.**

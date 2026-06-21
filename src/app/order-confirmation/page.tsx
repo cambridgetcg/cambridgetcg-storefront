@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import Stripe from "stripe";
 import OrderDetails from "./OrderDetails";
+import GoogleAdsConversion from "./GoogleAdsConversion";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2026-02-25.clover",
@@ -91,6 +92,11 @@ export default async function OrderConfirmationPage({
         </div>
       </div>
 
+      <GoogleAdsConversion
+        value={(session.amount_total || 0) / 100}
+        transactionId={session.id}
+        currency={session.currency?.toUpperCase() || "GBP"}
+      />
       <OrderDetails />
     </div>
   );

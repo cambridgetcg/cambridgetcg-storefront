@@ -86,6 +86,20 @@ export async function fetchCard(sku: string, channel = 'cambridgetcg'): Promise<
   return res.json();
 }
 
+// Uncached variant for revenue-critical checks (stock/price at checkout).
+// Unlike fetchCard it distinguishes "card does not exist" (null) from
+// "wholesale API unavailable" (throws), so callers can fail open on
+// outages instead of treating them as zero stock.
+export async function fetchCardFresh(sku: string, channel = 'cambridgetcg'): Promise<PriceItem | null> {
+  const res = await fetch(WHOLESALE_URL + '/api/v1/prices/' + encodeURIComponent(sku) + '?channel=' + channel, {
+    headers: { Authorization: 'Bearer ' + WHOLESALE_KEY },
+    cache: 'no-store',
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('wholesale_unavailable: ' + res.status);
+  return res.json();
+}
+
 export async function fetchGames(): Promise<GameItem[]> {
   const res = await fetch(WHOLESALE_URL + '/api/v1/games', {
     headers: { Authorization: 'Bearer ' + WHOLESALE_KEY },

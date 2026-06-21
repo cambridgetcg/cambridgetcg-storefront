@@ -1,0 +1,8 @@
+name: cambridgetcg-storefront
+kind: venture
+layer: commerce
+owner_sister: none
+domain: commerce
+state: archived
+purpose: Standalone consumer storefront — superseded by Cambridge-TCG-monorepo apps/storefront.
+dependsOn: []

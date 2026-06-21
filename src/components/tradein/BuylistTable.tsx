@@ -9,8 +9,17 @@ import { formatPrice } from "@/lib/format";
 function rarityBadge(rarity: string | null) {
   if (!rarity) return null;
   const r = rarity.toUpperCase();
+  // One Piece parallels use /P and /SP suffixes; Dragon Ball uses ☆
+  const isParallel = r.includes("/P") || r.includes("/SP") || r.includes("☆");
+
   let cls = "";
-  if (r === "SR" || r === "SEC" || r === "SP" || r === "SCR" || r === "L" || r === "SEC/SP")
+  let label = rarity;
+
+  if (isParallel) {
+    // Parallel cards labelled as AA (Alt Art)
+    cls = "bg-pink-500/20 text-pink-400";
+    label = "AA";
+  } else if (r === "SR" || r === "SEC" || r === "SP" || r === "SCR" || r === "L" || r === "SEC/SP")
     cls = "bg-yellow-500/20 text-yellow-400";
   else if (r === "R" || r === "RR" || r === "SSR")
     cls = "bg-purple-500/20 text-purple-400";
@@ -18,11 +27,12 @@ function rarityBadge(rarity: string | null) {
     cls = "bg-blue-500/20 text-blue-400";
   else if (r === "C")
     cls = "bg-neutral-700 text-neutral-400";
-  else return null;
+  else
+    cls = "bg-neutral-700 text-neutral-400";
 
   return (
     <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded-full ${cls}`}>
-      {rarity}
+      {label}
     </span>
   );
 }
@@ -42,7 +52,7 @@ function wantIndicator(cashWant: number, creditWant: number, mode: "cash" | "cre
 
 type SortKey = "card_number" | "cash_price" | "credit_price";
 
-export default function BuylistTable({ buylist }: { buylist: BuylistItem[] }) {
+export default function BuylistTable({ buylist, game }: { buylist: BuylistItem[]; game: string }) {
   const [search, setSearch] = useState("");
   const [setFilter, setSetFilter] = useState("");
   const [sort, setSort] = useState<SortKey>("card_number");
@@ -57,8 +67,21 @@ export default function BuylistTable({ buylist }: { buylist: BuylistItem[] }) {
         setMap.set(item.set_code, item.set_name);
       }
     }
-    return Array.from(setMap.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  }, [buylist]);
+    // One Piece has an established set-prefix ordering; other games sort
+    // naturally by set code.
+    const groupOrder: Record<string, number> =
+      game === "one-piece"
+        ? { OP: 0, EB: 1, ST: 2, PRB: 3, PCC: 4, P: 5, PROMO: 6, SEALED: 7 }
+        : {};
+    return Array.from(setMap.entries()).sort((a, b) => {
+      const prefixA = a[0].replace(/[0-9-].*/,"");
+      const prefixB = b[0].replace(/[0-9-].*/,"");
+      const groupA = groupOrder[prefixA] ?? 8;
+      const groupB = groupOrder[prefixB] ?? 8;
+      if (groupA !== groupB) return groupA - groupB;
+      return a[0].localeCompare(b[0], undefined, { numeric: true });
+    });
+  }, [buylist, game]);
 
   // Filter + sort
   const filtered = useMemo(() => {
@@ -101,6 +124,7 @@ export default function BuylistTable({ buylist }: { buylist: BuylistItem[] }) {
     } else {
       addItem({
         sku: item.sku,
+        game: item.game,
         card_number: item.card_number,
         name: item.name,
         set_code: item.set_code,
@@ -152,7 +176,7 @@ export default function BuylistTable({ buylist }: { buylist: BuylistItem[] }) {
           <option value="">All sets</option>
           {sets.map(([code, name]) => (
             <option key={code} value={code}>
-              {name}
+              {code} — {name}
             </option>
           ))}
         </select>
@@ -274,14 +298,14 @@ export default function BuylistTable({ buylist }: { buylist: BuylistItem[] }) {
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => updateQty(item.sku, inCart - 1)}
-                              className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
+                              className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
                             >
                               -
                             </button>
                             <span className="text-sm font-medium w-6 text-center">{inCart}</span>
                             <button
                               onClick={() => updateQty(item.sku, inCart + 1)}
-                              className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
+                              className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
                             >
                               +
                             </button>
@@ -363,14 +387,14 @@ export default function BuylistTable({ buylist }: { buylist: BuylistItem[] }) {
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => updateQty(item.sku, inCart - 1)}
-                            className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
+                            className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
                           >
                             -
                           </button>
                           <span className="text-sm font-medium w-5 text-center">{inCart}</span>
                           <button
                             onClick={() => updateQty(item.sku, inCart + 1)}
-                            className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
+                            className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition"
                           >
                             +
                           </button>

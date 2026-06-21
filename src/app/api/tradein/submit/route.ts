@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
-import { fetchPrices } from "@/lib/wholesale/client";
+import { fetchCard } from "@/lib/wholesale/client";
+import { isTradeinGame, gameFromSku } from "@/lib/tradein/games";
 import { generateReference, createSubmission } from "@/lib/tradein/db";
+
+// Price revalidation fans out per-SKU lookups; give large carts headroom
+// beyond the default serverless timeout.
+export const maxDuration = 60;
 import { sendConfirmationEmail } from "@/lib/tradein/email";
+import { auth } from "@/lib/auth";
+import { awardAchievement } from "@/lib/social/db";
 
 // Simple in-memory rate limiter: max 5 submissions per IP per hour
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -30,6 +37,7 @@ setInterval(() => {
 
 interface SubmitItem {
   sku: string;
+  game?: string;
   card_number: string;
   name: string;
   set_code: string | null;
@@ -90,25 +98,40 @@ export async function POST(request: Request) {
     }
 
     // Validate individual items
+    if (body.items.length > 100) {
+      return NextResponse.json({ error: "Too many items in one submission." }, { status: 400 });
+    }
     for (const item of body.items) {
       if (!item.sku || !item.quantity || item.quantity <= 0) {
         return NextResponse.json({ error: "Invalid item in submission." }, { status: 400 });
       }
+      // Derive game server-side from the prefix-typed SKU rather than
+      // trusting the client; SEALED- SKUs span games, so fall back to the
+      // client value there (legacy carts carry none → one-piece).
+      item.game = gameFromSku(item.sku) ?? item.game ?? "one-piece";
+      if (!isTradeinGame(item.game)) {
+        return NextResponse.json({ error: "Invalid game in submission." }, { status: 400 });
+      }
     }
 
-    // Re-validate prices against current buylist (allow 10% drift)
-    const [creditRes, cashRes] = await Promise.all([
-      fetchPrices({ game: "one-piece", channel: "tradein-credit", limit: 500 }),
-      fetchPrices({ game: "one-piece", channel: "tradein-cash", limit: 500 }),
-    ]);
-
+    // Re-validate prices against current buylist (allow 10% drift).
+    // Per-SKU lookups work for every game and avoid the wholesale API's
+    // 500-row page cap.
+    const skus = [...new Set(body.items.map((i) => i.sku))];
     const currentCreditMap = new Map<string, number>();
-    for (const item of creditRes.items) {
-      currentCreditMap.set(item.sku, item.channel_price ?? 0);
-    }
     const currentCashMap = new Map<string, number>();
-    for (const item of cashRes.items) {
-      currentCashMap.set(item.sku, item.channel_price ?? 0);
+    const CHUNK = 25;
+    for (let i = 0; i < skus.length; i += CHUNK) {
+      await Promise.all(
+        skus.slice(i, i + CHUNK).map(async (sku) => {
+          const [credit, cash] = await Promise.all([
+            fetchCard(sku, "tradein-credit").catch(() => null),
+            fetchCard(sku, "tradein-cash").catch(() => null),
+          ]);
+          currentCreditMap.set(sku, credit?.channel_price ?? 0);
+          currentCashMap.set(sku, cash?.channel_price ?? 0);
+        })
+      );
     }
 
     for (const item of body.items) {
@@ -146,7 +169,7 @@ export async function POST(request: Request) {
     // Generate reference and expiry
     const reference = await generateReference();
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    expiresAt.setHours(expiresAt.getHours() + 24);
 
     // Insert into DB
     await createSubmission({
@@ -166,6 +189,13 @@ export async function POST(request: Request) {
       items: body.items,
     });
 
+    // Social: first trade-in achievement (if user is logged in)
+    auth().then((session) => {
+      if (session?.user?.id) {
+        awardAchievement(session.user.id, "first_tradein").catch(() => {});
+      }
+    }).catch(() => {});
+
     // Send confirmation email (non-blocking — don't fail submission if email fails)
     try {
       await sendConfirmationEmail({
@@ -176,6 +206,7 @@ export async function POST(request: Request) {
         deliveryMethod: body.deliveryMethod,
         items: body.items.map((i) => ({
           name: i.name,
+          game: i.game || "one-piece",
           card_number: i.card_number,
           quantity: i.quantity,
           cash_price: i.cash_price,

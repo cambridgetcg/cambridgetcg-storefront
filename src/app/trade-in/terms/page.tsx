@@ -17,9 +17,30 @@ export default function TradeInTermsPage() {
 
         <div className="prose prose-invert max-w-none space-y-8 text-neutral-300 text-sm leading-relaxed">
           <section>
+            <h2 className="text-lg font-bold text-white mb-3">Payout Rates</h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li><strong className="text-purple-400">Store Credit:</strong> Up to <strong>100% of market value</strong>. Store credit can only be used to purchase from Cambridge TCG.</li>
+              <li><strong className="text-emerald-400">Cash:</strong> Up to <strong>85% of market value</strong>, paid via bank transfer.</li>
+              <li><strong className="text-amber-400">MINT Bonus (+20%):</strong> Cards in perfect MINT condition (pack-fresh, zero imperfections) may qualify for an additional <strong>20% bonus</strong> on top of the base payout. The MINT bonus is discretionary and subject to the evaluation and sole decision of Cambridge TCG. It is not guaranteed and may vary per card.</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="text-lg font-bold text-white mb-3">Bulk Card Trade-In</h2>
+            <ul className="list-disc pl-5 space-y-2">
+              <li><strong className="text-emerald-400">Base rate:</strong> <strong>2p per card</strong> for all Common (C), Uncommon (UC), and Rare (R) cards. No sorting required — just count and send.</li>
+              <li><strong className="text-amber-400">Valuable finds:</strong> If we identify cards in your bulk that are worth significantly more than 2p (tournament staples, alt art rares, valuable uncommons), we will pay <strong>85% of market value</strong> for those cards instead of the base rate. This amount is credited separately on top of your base payout.</li>
+              <li>Minimum submission: <strong>50 cards</strong>.</li>
+              <li>Bulk payouts are issued in <strong>store credit</strong>.</li>
+              <li>Cards should be in playable condition (no heavily damaged or water-damaged cards).</li>
+              <li>The identification and valuation of any &quot;gems&quot; within your bulk is at the sole discretion of Cambridge TCG.</li>
+            </ul>
+          </section>
+
+          <section>
             <h2 className="text-lg font-bold text-white mb-3">Card Condition</h2>
             <p>
-              All cards submitted must be in <strong>Near Mint (NM)</strong> condition. This means
+              All cards submitted should be in <strong>Near Mint (NM)</strong> or better condition. This means
               cards should have no visible wear, scratches, whitening on edges, creases, or bends.
               Cards that do not meet NM standards may be graded lower, resulting in a reduced payout,
               or returned at the customer&apos;s expense.
@@ -27,12 +48,16 @@ export default function TradeInTermsPage() {
           </section>
 
           <section>
+            <h2 className="text-lg font-bold text-white mb-3">Pricing &amp; Volatility</h2>
+            <p>
+              Trade-in prices are refreshed daily based on current market conditions. However, trading card markets are volatile and prices can change significantly even within the same day. The prices shown on the buylist are indicative and subject to change at the point of quotation.
+            </p>
+          </section>
+
+          <section>
             <h2 className="text-lg font-bold text-white mb-3">Price Lock Guarantee</h2>
             <p>
-              Once a trade-in is submitted, the quoted prices are <strong>locked for 7 days</strong> from
-              the date of submission. Your cards must arrive within this 7-day window for the
-              quoted prices to be honoured. After 7 days, prices may be re-evaluated based on
-              current market rates.
+              Prices shown on the buylist are indicative. Once your trade-in has been <strong>manually reviewed and a formal quotation issued</strong> by Cambridge TCG, the quoted prices are <strong>locked for 24 hours</strong> from the date of quotation. Your cards must arrive within this 24-hour window for the quoted prices to be honoured. After 24 hours, the quotation expires and prices may be re-evaluated based on current market rates.
             </p>
           </section>
 

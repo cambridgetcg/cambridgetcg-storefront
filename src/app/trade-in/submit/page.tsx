@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSellCart } from "@/context/SellCartContext";
 import { formatPrice } from "@/lib/format";
+import { gameLabel } from "@/lib/tradein/games";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -53,6 +54,7 @@ export default function SubmitTradeInPage() {
         body: JSON.stringify({
           items: items.map((i) => ({
             sku: i.sku,
+            game: i.game,
             card_number: i.card_number,
             name: i.name,
             set_code: i.set_code,
@@ -144,11 +146,11 @@ export default function SubmitTradeInPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate text-white">{item.name}</p>
-                    <p className="text-xs text-neutral-500">{item.card_number}</p>
+                    <p className="text-xs text-neutral-500">{item.card_number} · {gameLabel(item.game)}</p>
                     <div className="flex items-center gap-2 mt-2">
-                      <button onClick={() => updateQty(item.sku, item.quantity - 1)} className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition">-</button>
+                      <button onClick={() => updateQty(item.sku, item.quantity - 1)} className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition">-</button>
                       <span className="text-sm font-medium w-5 text-center">{item.quantity}</span>
-                      <button onClick={() => updateQty(item.sku, item.quantity + 1)} className="w-7 h-7 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition">+</button>
+                      <button onClick={() => updateQty(item.sku, item.quantity + 1)} className="w-9 h-9 bg-neutral-700 hover:bg-neutral-600 rounded text-sm font-bold transition">+</button>
                       <button onClick={() => removeItem(item.sku)} className="ml-auto text-xs text-neutral-500 hover:text-red-400 transition">Remove</button>
                     </div>
                   </div>
@@ -165,7 +167,7 @@ export default function SubmitTradeInPage() {
             {/* Payment method */}
             <div className="bg-neutral-900 rounded-xl p-4 mb-6">
               <h3 className="text-sm font-bold text-white mb-3">Payment Method</h3>
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <label className={`flex-1 cursor-pointer rounded-lg border-2 p-3 text-center transition ${paymentMethod === "credit" ? "border-amber-500 bg-amber-500/10" : "border-neutral-700 hover:border-neutral-600"}`}>
                   <input type="radio" name="payment" value="credit" checked={paymentMethod === "credit"} onChange={() => setPaymentMethod("credit")} className="sr-only" />
                   <p className="text-sm font-bold text-white">Store Credit</p>
@@ -275,7 +277,7 @@ export default function SubmitTradeInPage() {
             {/* Delivery */}
             <div className="space-y-3">
               <h3 className="text-sm font-bold text-white">Delivery Method</h3>
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <label className={`flex-1 cursor-pointer rounded-lg border-2 p-3 transition ${deliveryMethod === "mail" ? "border-amber-500 bg-amber-500/10" : "border-neutral-700 hover:border-neutral-600"}`}>
                   <input type="radio" name="delivery" value="mail" checked={deliveryMethod === "mail"} onChange={() => setDeliveryMethod("mail")} className="sr-only" />
                   <p className="text-sm font-bold text-white">Mail-in</p>
@@ -334,7 +336,7 @@ export default function SubmitTradeInPage() {
                 <span className="text-amber-400">{formatPrice(total)}</span>
               </div>
               <p className="text-xs text-neutral-500 mt-1">
-                {items.reduce((s, i) => s + i.quantity, 0)} cards · Quote valid for 7 days
+                {items.reduce((s, i) => s + i.quantity, 0)} cards · Quote locked for 24h after review
               </p>
               {shippingContribution && (
                 <p className="text-sm text-emerald-400 mt-2">
